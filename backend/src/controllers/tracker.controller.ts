@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
 import { logger } from '../utils/logger';
 import { JiraClient } from '../clients/jira.client';
+import { TeamworkClient } from '../clients/teamwork.client';
 import { TrackerClient } from '../clients/tracker.client';
 
 const prisma = new PrismaClient();
@@ -157,6 +158,8 @@ export class TrackerController {
       
       if (data.type === 'jira') {
         client = new JiraClient(data.authJson as any);
+      } else if (data.type === 'teamwork') {
+        client = new TeamworkClient(data.authJson as any);
       } else {
         return res.status(400).json({ error: 'Unsupported tracker type' });
       }
@@ -222,6 +225,8 @@ export class TrackerController {
         
         if (type === 'jira') {
           client = new JiraClient(authJson as any);
+        } else if (type === 'teamwork') {
+          client = new TeamworkClient(authJson as any);
         } else {
           return res.status(400).json({ error: 'Unsupported tracker type' });
         }
@@ -267,33 +272,22 @@ export class TrackerController {
   // Delete tracker (admin only)
   static async deleteTracker(req: AuthenticatedRequest, res: Response) {
     try {
-      // Check if user is admin
+      // Check if user has permission
       if (req.user?.role !== 'admin') {
         return res.status(403).json({ error: 'Admin access required' });
       }
 
       const { id } = req.params;
 
-      const tracker = await prisma.tracker.findUnique({
-        where: { id },
-        include: {
-          _count: {
-            select: { issues: true }
-          }
-        }
+      // Check if tracker has associated issues
+      const issueCount = await prisma.issue.count({
+        where: { trackerId: id }
       });
 
-      if (!tracker) {
-        return res.status(404).json({ error: 'Tracker not found' });
-      }
-
-      // Check if tracker has associated issues
-      if (tracker._count.issues > 0) {
+      if (issueCount > 0) {
         return res.status(400).json({ 
           error: 'Cannot delete tracker with associated issues',
-          details: {
-            issues: tracker._count.issues
-          }
+          details: `This tracker has ${issueCount} associated issues`
         });
       }
 
@@ -301,7 +295,7 @@ export class TrackerController {
         where: { id }
       });
 
-      res.status(204).send();
+      res.json({ message: 'Tracker deleted successfully' });
     } catch (error) {
       logger.error('Error deleting tracker:', { error });
       res.status(500).json({ error: 'Failed to delete tracker' });
@@ -325,6 +319,8 @@ export class TrackerController {
       
       if (tracker.type === 'jira') {
         client = new JiraClient(tracker.authJson as any);
+      } else if (tracker.type === 'teamwork') {
+        client = new TeamworkClient(tracker.authJson as any);
       } else {
         return res.status(400).json({ error: 'Unsupported tracker type' });
       }
@@ -360,6 +356,8 @@ export class TrackerController {
       
       if (tracker.type === 'jira') {
         client = new JiraClient(tracker.authJson as any);
+      } else if (tracker.type === 'teamwork') {
+        client = new TeamworkClient(tracker.authJson as any);
       } else {
         return res.status(400).json({ error: 'Unsupported tracker type' });
       }

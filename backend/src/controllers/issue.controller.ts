@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
 import { logger } from '../utils/logger';
 import { JiraClient } from '../clients/jira.client';
+import { TeamworkClient } from '../clients/teamwork.client';
 import { TrackerClient } from '../clients/tracker.client';
 
 const prisma = new PrismaClient();
@@ -10,7 +11,7 @@ const prisma = new PrismaClient();
 // Extend Request type to include user
 interface AuthenticatedRequest extends Request {
   user?: {
-    id: string;
+    userId: string;
     email: string;
     role: string;
   };
@@ -20,7 +21,7 @@ interface AuthenticatedRequest extends Request {
 const createIssueSchema = z.object({
   title: z.string().min(1).max(255),
   description: z.string().optional(),
-  status: z.enum(['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED']),
+  status: z.enum(['open', 'in_progress', 'done', 'closed', 'cancelled']),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']),
   assigneeId: z.string().optional(),
   trackerId: z.string(),
@@ -34,7 +35,7 @@ const updateIssueSchema = createIssueSchema.partial();
 const queryIssuesSchema = z.object({
   page: z.string().transform(val => parseInt(val, 10)).default('1'),
   limit: z.string().transform(val => parseInt(val, 10)).default('20'),
-  status: z.enum(['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED']).optional(),
+  status: z.enum(['open', 'in_progress', 'done', 'closed', 'cancelled']).optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional(),
   assigneeId: z.string().optional(),
   trackerId: z.string().optional(),
@@ -72,7 +73,7 @@ export class IssueController {
               select: { id: true, email: true, name: true }
             },
             tracker: {
-              select: { id: true, name: true, type: true }
+              select: { id: true, type: true }
             }
           },
           orderBy: { createdAt: 'desc' }
@@ -110,7 +111,7 @@ export class IssueController {
             select: { id: true, email: true, name: true }
           },
           tracker: {
-            select: { id: true, name: true, type: true, config: true }
+            select: { id: true, type: true, authJson: true }
           }
         }
       });
@@ -130,7 +131,6 @@ export class IssueController {
   static async createIssue(req: AuthenticatedRequest, res: Response) {
     try {
       const data = createIssueSchema.parse(req.body);
-      const userId = req.user?.id;
 
       // Verify tracker exists
       const tracker = await prisma.tracker.findUnique({
@@ -153,31 +153,23 @@ export class IssueController {
 
       const issue = await prisma.issue.create({
         data: {
-          ...data,
-          createdById: userId,
-          dueDate: data.dueDate ? new Date(data.dueDate) : undefined
+          title: data.title,
+          description: data.description,
+          status: data.status,
+          assigneeId: data.assigneeId,
+          trackerId: data.trackerId,
+          extKey: data.externalId || `ISSUE-${Date.now()}`, // Generate a key if not provided
+          payloadJson: {} // Empty payload for now
         },
         include: {
           assignee: {
             select: { id: true, email: true, name: true }
           },
           tracker: {
-            select: { id: true, name: true, type: true }
-          },
-          createdBy: {
-            select: { id: true, email: true, name: true }
+            select: { id: true, type: true }
           }
         }
       });
-
-      // Sync with external tracker if configured
-      if (tracker.config && issue.externalId) {
-        try {
-          await IssueController.syncWithExternalTracker(issue, tracker);
-        } catch (syncError) {
-          logger.warn('Failed to sync with external tracker:', { error: syncError });
-        }
-      }
 
       res.status(201).json(issue);
     } catch (error) {
@@ -217,8 +209,11 @@ export class IssueController {
       const issue = await prisma.issue.update({
         where: { id },
         data: {
-          ...data,
-          dueDate: data.dueDate ? new Date(data.dueDate) : undefined,
+          title: data.title,
+          description: data.description,
+          status: data.status,
+          assigneeId: data.assigneeId,
+          extKey: data.externalId || existingIssue.extKey,
           updatedAt: new Date()
         },
         include: {
@@ -226,19 +221,10 @@ export class IssueController {
             select: { id: true, email: true, name: true }
           },
           tracker: {
-            select: { id: true, name: true, type: true }
+            select: { id: true, type: true }
           }
         }
       });
-
-      // Sync with external tracker if configured
-      if (existingIssue.tracker.config && issue.externalId) {
-        try {
-          await IssueController.syncWithExternalTracker(issue, existingIssue.tracker);
-        } catch (syncError) {
-          logger.warn('Failed to sync with external tracker:', { error: syncError });
-        }
-      }
 
       res.json(issue);
     } catch (error) {
@@ -287,14 +273,16 @@ export class IssueController {
         return res.status(404).json({ error: 'Tracker not found' });
       }
 
-      if (!tracker.config) {
+      if (!tracker.authJson) {
         return res.status(400).json({ error: 'Tracker not configured for external sync' });
       }
 
       let client: TrackerClient;
       
-      if (tracker.type === 'JIRA') {
-        client = new JiraClient(tracker.config as any);
+      if (tracker.type === 'jira') {
+        client = new JiraClient(tracker.authJson as any);
+      } else if (tracker.type === 'teamwork') {
+        client = new TeamworkClient(tracker.authJson as any);
       } else {
         return res.status(400).json({ error: 'Unsupported tracker type' });
       }
@@ -306,7 +294,7 @@ export class IssueController {
       }
 
       // Fetch issues from external tracker
-      const externalIssues = await client.getIssues();
+      const externalIssues = await client.getIssues('', { limit: 1000 });
       
       let syncedCount = 0;
       let errorCount = 0;
@@ -315,26 +303,24 @@ export class IssueController {
         try {
           await prisma.issue.upsert({
             where: {
-              trackerId_externalId: {
+              trackerId_extKey: {
                 trackerId: tracker.id,
-                externalId: externalIssue.id
+                extKey: externalIssue.id
               }
             },
             update: {
               title: externalIssue.title,
               description: externalIssue.description,
               status: externalIssue.status as any,
-              priority: externalIssue.priority as any,
               updatedAt: new Date()
             },
             create: {
               title: externalIssue.title,
               description: externalIssue.description,
               status: externalIssue.status as any,
-              priority: externalIssue.priority as any,
-              externalId: externalIssue.id,
+              extKey: externalIssue.id,
               trackerId: tracker.id,
-              createdById: req.user?.id || tracker.createdById
+              payloadJson: externalIssue
             }
           });
           syncedCount++;
@@ -358,12 +344,14 @@ export class IssueController {
 
   // Helper method to sync with external tracker
   private static async syncWithExternalTracker(issue: any, tracker: any) {
-    if (!tracker.config) return;
+    if (!tracker.authJson) return;
 
     let client: TrackerClient;
     
-    if (tracker.type === 'JIRA') {
-      client = new JiraClient(tracker.config);
+    if (tracker.type === 'jira') {
+      client = new JiraClient(tracker.authJson);
+    } else if (tracker.type === 'teamwork') {
+      client = new TeamworkClient(tracker.authJson);
     } else {
       throw new Error('Unsupported tracker type');
     }
@@ -372,7 +360,7 @@ export class IssueController {
     // Implementation depends on the specific tracker API
     logger.info('Syncing issue with external tracker:', {
       issueId: issue.id,
-      externalId: issue.externalId,
+      extKey: issue.extKey,
       trackerType: tracker.type
     });
   }

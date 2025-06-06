@@ -6,11 +6,12 @@ import apiClient from '../services/apiClient';
 interface AuthStore {
   user: User | null;
   accessToken: string | null;
+  refreshToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (credentials: LoginCredentials) => Promise<void>;
   logout: () => void;
-  refreshToken: () => Promise<void>;
+  refreshTokens: () => Promise<void>;
   setUser: (user: User | null) => void;
   setTokens: (tokens: AuthTokens) => void;
 }
@@ -20,6 +21,7 @@ export const useAuthStore = create<AuthStore>()(
     (set, get) => ({
       user: null,
       accessToken: null,
+      refreshToken: null,
       isAuthenticated: false,
       isLoading: false,
 
@@ -32,7 +34,8 @@ export const useAuthStore = create<AuthStore>()(
           
           set({
             user: data.user,
-            accessToken: data.accessToken,
+            accessToken: data.tokens.accessToken,
+            refreshToken: data.tokens.refreshToken,
             isAuthenticated: true,
             isLoading: false,
           });
@@ -46,6 +49,7 @@ export const useAuthStore = create<AuthStore>()(
         set({
           user: null,
           accessToken: null,
+          refreshToken: null,
           isAuthenticated: false,
         });
         
@@ -53,14 +57,22 @@ export const useAuthStore = create<AuthStore>()(
         localStorage.removeItem('auth-storage');
       },
 
-      refreshToken: async () => {
+      refreshTokens: async () => {
         try {
-          const response = await apiClient.post('/auth/refresh');
+          const currentRefreshToken = get().refreshToken;
+          if (!currentRefreshToken) {
+            throw new Error('No refresh token available');
+          }
+
+          const response = await apiClient.post('/auth/refresh', {
+            refreshToken: currentRefreshToken
+          });
           const { data } = response;
           
           set({
             user: data.user,
-            accessToken: data.accessToken,
+            accessToken: data.tokens.accessToken,
+            refreshToken: data.tokens.refreshToken,
             isAuthenticated: true,
           });
         } catch (error) {
@@ -77,6 +89,7 @@ export const useAuthStore = create<AuthStore>()(
       setTokens: (tokens: AuthTokens) => {
         set({
           accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
           isAuthenticated: true,
         });
       },
@@ -85,6 +98,7 @@ export const useAuthStore = create<AuthStore>()(
       name: 'auth-storage',
       partialize: (state) => ({
         user: state.user,
+        refreshToken: state.refreshToken,
         // Don't persist accessToken for security
       }),
     }

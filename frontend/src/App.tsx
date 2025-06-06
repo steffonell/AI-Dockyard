@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { ThemeProvider } from '@mui/material/styles';
 import { CssBaseline } from '@mui/material';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { lightTheme } from './theme';
 import { useAuthStore } from './store/authStore';
 
@@ -32,7 +33,18 @@ const queryClient = new QueryClient({
 });
 
 function App() {
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const { isAuthenticated, user, refreshToken: refreshTokenValue, refreshTokens } = useAuthStore();
+
+  // Auth initialization logic directly in App component
+  useEffect(() => {
+    // If we have a user and refresh token but no access token, try to refresh
+    if (user && refreshTokenValue && !useAuthStore.getState().accessToken) {
+      refreshTokens().catch(() => {
+        // If refresh fails, user will be logged out automatically
+        console.log('Failed to refresh token on app init');
+      });
+    }
+  }, [user, refreshTokenValue, refreshTokens]);
 
   return (
     <ErrorBoundary>

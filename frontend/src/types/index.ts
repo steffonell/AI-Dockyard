@@ -20,27 +20,81 @@ export interface AuthTokens {
   refreshToken: string;
 }
 
-// Issue types
+// Issue types - Updated to match backend Prisma schema
 export interface Issue {
   id: string;
+  trackerId: string;
+  extKey: string; // External key from tracker (e.g., PROJ-123)
+  assigneeId?: string;
   title: string;
-  description: string;
+  description?: string;
   status: IssueStatus;
-  priority: IssuePriority;
-  assignee?: User;
-  reporter: User;
-  labels: string[];
+  payloadJson: any; // Raw JSON from external tracker
   createdAt: string;
   updatedAt: string;
-  jiraKey?: string;
-  jiraUrl?: string;
-  comments: Comment[];
-  attachments: Attachment[];
+  // Relations
+  tracker?: Tracker;
+  assignee?: User;
+  prompts?: Prompt[];
 }
 
-export type IssueStatus = 'todo' | 'in-progress' | 'review' | 'done';
+export type IssueStatus = 'open' | 'in_progress' | 'done' | 'closed' | 'cancelled';
 export type IssuePriority = 'low' | 'medium' | 'high' | 'critical';
 
+// Tracker types
+export interface Tracker {
+  id: string;
+  companyId: string;
+  type: TrackerType;
+  baseUrl?: string;
+  authJson: any;
+  lastSync?: string;
+  createdAt: string;
+  updatedAt: string;
+  // Relations
+  company?: Company;
+  issues?: Issue[];
+}
+
+export type TrackerType = 'jira' | 'teamwork';
+
+export interface Company {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  // Relations
+  trackers?: Tracker[];
+  templates?: PromptTemplate[];
+}
+
+export interface Prompt {
+  id: string;
+  issueId: string;
+  templateId: string;
+  creatorId: string;
+  createdAt: string;
+  // Relations
+  issue?: Issue;
+  template?: PromptTemplate;
+  creator?: User;
+  versions?: PromptVersion[];
+  generationEvents?: GenerationEvent[];
+}
+
+export interface PromptVersion {
+  id: string;
+  promptId: string;
+  version: number;
+  bodyText: string;
+  tokensEstimate?: number;
+  createdAt: string;
+  // Relations
+  prompt?: Prompt;
+  outputs?: Output[];
+}
+
+// Legacy types for backward compatibility
 export interface Comment {
   id: string;
   content: string;
@@ -64,7 +118,24 @@ export interface IssueFilters {
   labels?: string[];
 }
 
-// Template types
+// Template types - Updated to match backend
+export interface PromptTemplate {
+  id: string;
+  companyId: string;
+  creatorId: string;
+  name: string;
+  bodyMd: string; // Markdown body
+  lintJson: any; // JSON schema for validation
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  // Relations
+  company?: Company;
+  creator?: User;
+  prompts?: Prompt[];
+}
+
+// Legacy Template interface for backward compatibility
 export interface Template {
   id: string;
   name: string;
@@ -85,6 +156,31 @@ export interface TemplateVariable {
   description: string;
   required: boolean;
   defaultValue?: any;
+}
+
+// Output and GenerationEvent types
+export interface Output {
+  id: string;
+  promptVersionId: string;
+  blobText?: string;
+  filePath?: string;
+  checksum?: string;
+  createdAt: string;
+  // Relations
+  promptVersion?: PromptVersion;
+}
+
+export interface GenerationEvent {
+  id: string;
+  promptId: string;
+  userId: string;
+  tokensIn?: number;
+  tokensOut?: number;
+  ide?: string;
+  timestamp: string;
+  // Relations
+  prompt?: Prompt;
+  user?: User;
 }
 
 // Prompt types
