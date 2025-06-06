@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { logger } from '../utils/logger';
+import { teamworkRateLimiter } from '../utils/rate-limiter';
 import { 
   TrackerClient, 
   TrackerIssue, 
@@ -17,26 +18,35 @@ interface TeamworkAuthConfig {
 interface TeamworkTaskResponse {
   id: string;
   name: string;
-  description?: string;
+  description: string;
   status: string;
-  'project-id': string;
-  'project-name': string;
-  'responsible-party-id'?: string;
-  'responsible-party-names'?: string;
-  'responsible-party-email'?: string;
-  'created-on': string;
-  'last-changed-on': string;
-  priority?: string;
-  tags?: { name: string }[];
+  priority: string;
+  createdOn: string;
+  lastChangedOn: string;
+  dueDate?: string;
+  completedOn?: string;
+  projectId: string;
+  projectName: string;
+  assignedTo?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    emailAddress: string;
+  };
+  createdBy?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+  };
 }
 
 interface TeamworkProjectResponse {
   id: string;
   name: string;
-  description?: string;
+  description: string;
   status: string;
-  'created-on': string;
-  'last-changed-on': string;
+  createdOn: string;
+  lastChangedOn: string;
 }
 
 export class TeamworkClient extends TrackerClient {
@@ -244,57 +254,77 @@ export class TeamworkClient extends TrackerClient {
   }
 
   private normalizeTeamworkTask(task: TeamworkTaskResponse): TrackerIssue {
-    const issue: TrackerIssue = {
+    // Use the parent class normalization method to ensure proper type handling
+    return this.normalizeIssue({
       id: task.id,
-      key: task.id, // Teamwork doesn't have task keys like Jira
+      key: task.id,
       title: task.name,
-      status: this.normalizeStatus(task.status),
-      createdAt: new Date(task['created-on']),
-      updatedAt: new Date(task['last-changed-on']),
-      rawData: task
-    };
-
-    // Handle optional description
-    if (task.description) {
-      issue.description = task.description;
-    }
-
-    // Handle URL
-    if (task.id) {
-      issue.url = `${this.baseUrl}/tasks/${task.id}`;
-    }
-
-    // Handle assignee
-    if (task['responsible-party-id']) {
-      issue.assignee = {
-        id: task['responsible-party-id'],
-        name: task['responsible-party-names'] || '',
-        email: task['responsible-party-email'] || ''
-      };
-    }
-
-    // Handle priority
-    if (task.priority) {
-      issue.priority = task.priority;
-    }
-
-    // Handle labels/tags
-    if (task.tags && task.tags.length > 0) {
-      issue.labels = task.tags.map(tag => tag.name);
-    }
-
-    return issue;
+      summary: task.name, // Alternative property name support
+      description: task.description,
+      status: task.status,
+      assignee: task.assignedTo ? {
+        id: task.assignedTo.id,
+        name: `${task.assignedTo.firstName} ${task.assignedTo.lastName}`,
+        displayName: `${task.assignedTo.firstName} ${task.assignedTo.lastName}`,
+        email: task.assignedTo.emailAddress,
+        emailAddress: task.assignedTo.emailAddress
+      } : null,
+      reporter: task.createdBy ? {
+        id: task.createdBy.id,
+        name: `${task.createdBy.firstName} ${task.createdBy.lastName}`,
+        displayName: `${task.createdBy.firstName} ${task.createdBy.lastName}`,
+        email: ''
+      } : null,
+      priority: task.priority,
+      created: task.createdOn,
+      createdAt: task.createdOn,
+      updated: task.lastChangedOn,
+      updatedAt: task.lastChangedOn,
+      url: `${this.baseUrl}/tasks/${task.id}`,
+      self: `${this.baseUrl}/tasks/${task.id}`,
+      labels: [],
+      tags: []
+    });
   }
 
-  private normalizeStatus(teamworkStatus: string): string {
-    // Map Teamwork status to standard status values
-    switch (teamworkStatus?.toLowerCase()) {
+  private mapTeamworkStatus(teamworkStatus: string): 'open' | 'in_progress' | 'done' | 'closed' | 'cancelled' {
+    switch (teamworkStatus.toLowerCase()) {
       case 'new':
-      case 'notstarted': return 'open';
-      case 'inprogress': return 'in_progress';
-      case 'completed': return 'done';
-      case 'cancelled': return 'cancelled';
-      default: return teamworkStatus || 'open';
+      case 'active': return 'open';
+      case 'inprogress':
+      case 'in-progress': return 'in_progress';
+      case 'completed':
+      case 'complete': return 'done';
+      case 'closed': return 'closed';
+      default: return 'open';
     }
+  }
+
+  // Override makeRequest to add rate limiting
+  protected async makeRequest(endpoint: string, options: any = {}): Promise<any> {
+    // Check rate limit before making request
+    const rateLimitCheck = await teamworkRateLimiter.checkLimit({
+      apiKey: this.teamworkAuth.apiKey
+    });
+
+    if (!rateLimitCheck.allowed) {
+      const resetTime = rateLimitCheck.resetTime;
+      const waitTime = resetTime ? Math.ceil((resetTime - Date.now()) / 1000) : 60;
+      
+      const error = new Error(`Teamwork API rate limit exceeded. Please try again in ${waitTime} seconds.`);
+      (error as any).code = 'RATE_LIMIT_EXCEEDED';
+      (error as any).retryAfter = waitTime;
+      
+      logger.warn('Teamwork API rate limit exceeded', { 
+        endpoint, 
+        waitTime,
+        resetTime: resetTime ? new Date(resetTime).toISOString() : undefined
+      });
+      
+      throw error;
+    }
+
+    // Make the actual request using parent class method
+    return super.makeRequest(endpoint, options);
   }
 } 

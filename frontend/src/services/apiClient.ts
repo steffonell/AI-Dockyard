@@ -2,9 +2,9 @@ import axios, { AxiosError, AxiosResponse } from 'axios';
 import { useAuthStore } from '../store/authStore';
 import { ApiError } from '../types';
 
-// Create axios instance - pointing to Teamwork server instead of backend
+// Create axios instance - now pointing to the integrated backend
 export const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',

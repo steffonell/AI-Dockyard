@@ -1,13 +1,4 @@
-import axios from 'axios';
-
-// Create a separate axios instance for Teamwork API
-export const teamworkApiClient = axios.create({
-  baseURL: 'http://localhost:5000/api/teamwork',
-  timeout: 10000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
+import apiClient from './apiClient';
 
 export interface TeamworkProject {
   id: string;
@@ -45,7 +36,7 @@ export interface TeamworkApiResponse<T> {
 export class TeamworkService {
   static async testConnection(): Promise<{ success: boolean; message: string }> {
     try {
-      const response = await teamworkApiClient.get<TeamworkApiResponse<any>>('/test-connection');
+      const response = await apiClient.get<TeamworkApiResponse<any>>('/teamwork/test-connection');
       return {
         success: response.data.success,
         message: response.data.success ? 'Connection successful' : 'Connection failed'
@@ -53,18 +44,18 @@ export class TeamworkService {
     } catch (error: any) {
       return {
         success: false,
-        message: error.response?.data?.error?.message || 'Connection failed'
+        message: error.message || 'Connection failed'
       };
     }
   }
 
   static async getProjects(): Promise<TeamworkProject[]> {
     try {
-      const response = await teamworkApiClient.get<TeamworkApiResponse<{ projects: TeamworkProject[] }>>('/projects');
+      const response = await apiClient.get<TeamworkApiResponse<{ projects: TeamworkProject[] }>>('/teamwork/projects');
       return response.data.data.projects || [];
     } catch (error: any) {
       console.error('Failed to fetch Teamwork projects:', error);
-      throw new Error(error.response?.data?.error?.message || 'Failed to fetch projects');
+      throw new Error(error.message || 'Failed to fetch projects');
     }
   }
 
@@ -88,12 +79,12 @@ export class TeamworkService {
         params.append('updatedAfter', filters.updatedAfter);
       }
 
-      const url = `/tasks${params.toString() ? `?${params.toString()}` : ''}`;
-      const response = await teamworkApiClient.get<TeamworkApiResponse<{ tasks: TeamworkTask[] }>>(url);
+      const url = `/teamwork/tasks${params.toString() ? `?${params.toString()}` : ''}`;
+      const response = await apiClient.get<TeamworkApiResponse<{ tasks: TeamworkTask[] }>>(url);
       return response.data.data.tasks || [];
     } catch (error: any) {
       console.error('Failed to fetch Teamwork tasks:', error);
-      throw new Error(error.response?.data?.error?.message || 'Failed to fetch tasks');
+      throw new Error(error.message || 'Failed to fetch tasks');
     }
   }
 
@@ -117,12 +108,12 @@ export class TeamworkService {
         params.append('updatedAfter', filters.updatedAfter);
       }
 
-      const url = `/projects/${projectId}/tasks${params.toString() ? `?${params.toString()}` : ''}`;
-      const response = await teamworkApiClient.get<TeamworkApiResponse<{ tasks: TeamworkTask[] }>>(url);
+      const url = `/teamwork/projects/${projectId}/tasks${params.toString() ? `?${params.toString()}` : ''}`;
+      const response = await apiClient.get<TeamworkApiResponse<{ tasks: TeamworkTask[] }>>(url);
       return response.data.data.tasks || [];
     } catch (error: any) {
       console.error(`Failed to fetch tasks for project ${projectId}:`, error);
-      throw new Error(error.response?.data?.error?.message || 'Failed to fetch project tasks');
+      throw new Error(error.message || 'Failed to fetch project tasks');
     }
   }
 }

@@ -25,8 +25,26 @@ const queryClient = new QueryClient({
       staleTime: 5 * 60 * 1000, // 5 minutes
       cacheTime: 10 * 60 * 1000, // 10 minutes
       retry: (failureCount, error: any) => {
+        // Don't retry on authentication errors
         if (error?.response?.status === 401) return false;
+        
+        // Handle rate limiting - wait longer before retrying
+        if (error?.response?.status === 429) {
+          return failureCount < 2; // Only retry twice for rate limits
+        }
+        
+        // Standard retry logic for other errors
         return failureCount < 3;
+      },
+      retryDelay: (attemptIndex, error: any) => {
+        // For rate limiting, use a longer delay
+        if (error?.response?.status === 429) {
+          const retryAfter = error?.response?.data?.error?.retryAfter;
+          return retryAfter ? retryAfter * 1000 : Math.min(1000 * 2 ** attemptIndex, 30000);
+        }
+        
+        // Standard exponential backoff for other errors
+        return Math.min(1000 * 2 ** attemptIndex, 30000);
       },
     },
   },
