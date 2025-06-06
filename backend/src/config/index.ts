@@ -27,6 +27,8 @@ const envSchema = z.object({
   // External Services
   JIRA_BASE_URL: z.string().optional(),
   TEAMWORK_BASE_URL: z.string().optional(),
+  TEAMWORK_API_KEY: z.string().optional(),
+  TEAMWORK_SITE: z.string().optional(),
   
   // Security
   BCRYPT_ROUNDS: z.string().transform(Number).default('12'),
@@ -72,6 +74,8 @@ export const config = {
   external: {
     jiraBaseUrl: env.JIRA_BASE_URL,
     teamworkBaseUrl: env.TEAMWORK_BASE_URL,
+    teamworkApiKey: env.TEAMWORK_API_KEY,
+    teamworkSite: env.TEAMWORK_SITE,
   },
   security: {
     bcryptRounds: env.BCRYPT_ROUNDS,

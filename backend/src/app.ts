@@ -13,6 +13,7 @@ import { promptRoutes } from './routes/prompt.routes';
 import { userRoutes } from './routes/user.routes';
 import { companyRoutes } from './routes/company.routes';
 import { trackerRoutes } from './routes/tracker.routes';
+import { teamworkRoutes } from './routes/teamwork.routes';
 
 export function createApp(): Application {
   const app = express();
@@ -94,6 +95,7 @@ export function createApp(): Application {
   app.use('/api/users', userRoutes);
   app.use('/api/companies', companyRoutes);
   app.use('/api/trackers', trackerRoutes);
+  app.use('/api/teamwork', teamworkRoutes);
 
   // Catch-all for undefined API routes
   app.use('/api', (req: Request, res: Response) => {

@@ -161,22 +161,42 @@ const TeamworkIssuesPage: React.FC = () => {
   const isLoading = isLoadingProjects || isLoadingTasks;
 
   if (hasError) {
+    const isRateLimit = (projectsError as any)?.code === 'RATE_LIMIT_EXCEEDED' || 
+                       (tasksError as any)?.code === 'RATE_LIMIT_EXCEEDED';
+    const retryAfter = (projectsError as any)?.retryAfter || (tasksError as any)?.retryAfter;
+    
     return (
       <Box>
         <Typography variant="h4" component="h1" gutterBottom>
           Teamwork Issues
         </Typography>
-        <Alert severity="error" sx={{ mt: 2 }}>
-          Failed to connect to Teamwork API. Please check that:
-          <br />
-          • The Teamwork server is running on port 5000
-          <br />
-          • Your TEAMWORK_API_KEY and TEAMWORK_SITE environment variables are set
-          <br />
-          • Your Teamwork credentials are valid
-          <br />
-          <br />
-          Error: {(projectsError as any)?.message || (tasksError as any)?.message || 'Unknown error'}
+        <Alert severity={isRateLimit ? "warning" : "error"} sx={{ mt: 2 }}>
+          {isRateLimit ? (
+            <>
+              <strong>Rate Limit Exceeded</strong>
+              <br />
+              Too many requests have been made to the Teamwork API. Please wait a moment before trying again.
+              {retryAfter && (
+                <>
+                  <br />
+                  <strong>Please wait {retryAfter} seconds before retrying.</strong>
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              Failed to connect to Teamwork API. Please check that:
+              <br />
+              • The backend server is running on port 3000
+              <br />
+              • Your TEAMWORK_API_KEY and TEAMWORK_SITE environment variables are set in the backend
+              <br />
+              • Your Teamwork credentials are valid
+              <br />
+              <br />
+              Error: {(projectsError as any)?.message || (tasksError as any)?.message || 'Unknown error'}
+            </>
+          )}
         </Alert>
         <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
           <Button
@@ -186,8 +206,9 @@ const TeamworkIssuesPage: React.FC = () => {
               refetchTasks();
               window.location.reload();
             }}
+            disabled={isRateLimit}
           >
-            Retry
+            {isRateLimit ? `Retry in ${retryAfter || 60}s` : 'Retry'}
           </Button>
           <Button
             variant="outlined"
