@@ -1,0 +1,29 @@
+{
+  "name": "ai-dockyard",
+  "version": "0.1.0",
+  "description": "AI-Dockyard - Issue-to-Prompt Generation Platform",
+  "scripts": {
+    "dev": "npm run dev:backend & npm run dev:frontend",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build": "npm run build:backend && npm run build:frontend",
+    "build:backend": "cd backend && npm run build",
+    "build:frontend": "cd frontend && npm run build",
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "db:migrate": "cd backend && npm run db:migrate",
+    "db:generate": "cd backend && npm run db:generate",
+    "db:studio": "cd backend && npm run db:studio"
+  },
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "devDependencies": {
+    "concurrently": "^7.6.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "author": "AI-Dockyard",
+  "license": "MIT"
+} 

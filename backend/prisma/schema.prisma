@@ -1,0 +1,213 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  admin
+  lead
+  developer
+}
+
+enum TrackerType {
+  jira
+  teamwork
+}
+
+enum IssueStatus {
+  open
+  in_progress
+  done
+  closed
+  cancelled
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  role         UserRole @default(developer)
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  assignedIssues     Issue[]            @relation("IssueAssignee")
+  createdPrompts     Prompt[]           @relation("PromptCreator")
+  generationEvents   GenerationEvent[]
+  createdTemplates   PromptTemplate[]   @relation("TemplateCreator")
+  refreshTokens      RefreshToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  userId    String    @map("user_id")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  trackers  Tracker[]
+  templates PromptTemplate[]
+
+  @@map("companies")
+}
+
+model Tracker {
+  id        String      @id @default(cuid())
+  companyId String      @map("company_id")
+  type      TrackerType
+  baseUrl   String?     @map("base_url")
+  authJson  Json        @map("auth_json")
+  lastSync  DateTime?   @map("last_sync")
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  // Relations
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  issues  Issue[]
+
+  @@index([companyId])
+  @@map("trackers")
+}
+
+model Issue {
+  id          String      @id @default(cuid())
+  trackerId   String      @map("tracker_id")
+  extKey      String      @map("ext_key") // External key from tracker (e.g., PROJ-123)
+  assigneeId  String?     @map("assignee_id")
+  title       String
+  description String?     @db.Text
+  status      IssueStatus @default(open)
+  payloadJson Json        @map("payload_json") // Raw JSON from external tracker
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  // Relations
+  tracker  Tracker  @relation(fields: [trackerId], references: [id], onDelete: Cascade)
+  assignee User?    @relation("IssueAssignee", fields: [assigneeId], references: [id])
+  prompts  Prompt[]
+
+  @@unique([trackerId, extKey])
+  @@index([trackerId])
+  @@index([assigneeId])
+  @@index([status])
+  @@map("issues")
+}
+
+model PromptTemplate {
+  id        String   @id @default(cuid())
+  companyId String   @map("company_id")
+  creatorId String   @map("creator_id")
+  name      String
+  bodyMd    String   @map("body_md") @db.Text
+  lintJson  Json     @map("lint_json") // JSON schema for validation
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  creator User    @relation("TemplateCreator", fields: [creatorId], references: [id])
+  prompts Prompt[]
+
+  @@index([companyId])
+  @@index([creatorId])
+  @@map("prompt_templates")
+}
+
+model Prompt {
+  id         String   @id @default(cuid())
+  issueId    String   @map("issue_id")
+  templateId String   @map("template_id")
+  creatorId  String   @map("creator_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // Relations
+  issue          Issue            @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  template       PromptTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  creator        User             @relation("PromptCreator", fields: [creatorId], references: [id])
+  versions       PromptVersion[]
+  generationEvents GenerationEvent[]
+
+  @@index([issueId])
+  @@index([templateId])
+  @@index([creatorId])
+  @@map("prompts")
+}
+
+model PromptVersion {
+  id            String   @id @default(cuid())
+  promptId      String   @map("prompt_id")
+  version       Int      @default(1)
+  bodyText      String   @map("body_text") @db.Text
+  tokensEstimate Int?    @map("tokens_estimate")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  // Relations
+  prompt  Prompt   @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  outputs Output[]
+
+  @@unique([promptId, version])
+  @@index([promptId])
+  @@map("prompt_versions")
+}
+
+model Output {
+  id              String   @id @default(cuid())
+  promptVersionId String   @map("prompt_version_id")
+  blobText        String?  @map("blob_text") @db.Text
+  filePath        String?  @map("file_path")
+  checksum        String?  // SHA-256 for deduplication
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // Relations
+  promptVersion PromptVersion @relation(fields: [promptVersionId], references: [id], onDelete: Cascade)
+
+  @@index([promptVersionId])
+  @@index([checksum])
+  @@map("outputs")
+}
+
+model GenerationEvent {
+  id              String   @id @default(cuid())
+  promptId        String   @map("prompt_id")
+  userId          String   @map("user_id")
+  tokensIn        Int?     @map("tokens_in")
+  tokensOut       Int?     @map("tokens_out")
+  ide             String?  // IDE information for analytics
+  timestamp       DateTime @default(now())
+
+  // Relations  
+  prompt Prompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([promptId])
+  @@index([userId])
+  @@index([timestamp])
+  @@map("generation_events")
+} 

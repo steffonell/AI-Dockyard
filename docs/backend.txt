@@ -1,0 +1,319 @@
+# Backend Development Instructions
+## Issue-to-Prompt Generation Platform (MVP v0.1)
+
+### 🚀 Tech Stack & Architecture
+
+**Core Technologies:**
+- **Runtime:** Node.js 20
+- **Framework:** Express 5 (TypeScript)
+- **Database:** MySQL 8 with Prisma ORM
+- **Queue System:** BullMQ (Redis backend)
+- **Authentication:** JWT (HS256) + BCrypt
+- **Documentation:** OpenAPI 3.1 (auto-generated)
+- **Task Runner:** ts-node for development
+
+**Architecture Pattern:** Clean Architecture
+```
+Presentation Layer → API Layer → Domain Layer → Persistence Layer
+```
+
+### 📋 Development Setup Requirements
+
+**Pre-requisites:**
+- Node.js 20+
+- MySQL 8 (UTF-8, strict SQL mode)
+- Redis server (for BullMQ)
+- Docker & Docker Compose
+
+**Performance Targets:**
+- 95th percentile API latency: <400ms
+- Prompt generation: <200ms server-side
+- Unit test coverage: ≥80%
+
+### 🔧 Core Backend Components to Implement
+
+#### 1. Authentication & Authorization System
+
+**JWT Implementation:**
+- **Access Token:** 15 minutes, HS256 signed
+- **Refresh Token:** 7 days, HTTP-only secure cookie
+- **Password Hashing:** BCrypt with cost 12
+
+**RBAC Roles:**
+- `admin`: Full system access
+- `lead`: Template management + metrics
+- `developer`: Issue & prompt operations
+
+**Critical Implementation Notes:**
+- Store refresh token IDs in Redis for revocation
+- Implement middleware for route-level role checks
+- Log all authentication events with UTC timestamp + IP
+
+#### 2. External Tracker Integration Service
+
+**Generic Interface Design:**
+```typescript
+interface TrackerClient {
+  authenticate(): Promise<void>;
+  fetchIssues(deltaFilter?: Date): Promise<Issue[]>;
+  fetchIssue(externalKey: string): Promise<Issue>;
+}
+```
+
+**Implementations Required:**
+- **JiraClient:** OAuth 2.0 authentication, pagination handling
+- **TeamworkClient:** Personal token authentication
+- **Sync Strategy:** BullMQ workers every 5 minutes with delta filtering
+
+**Data Normalization:**
+- Map external fields → internal schema
+- Store raw payload JSON for audit trail
+- Handle webhook fallback for self-hosted Jira
+
+#### 3. Database Schema Implementation
+
+**Key Tables & Relationships:**
+
+```sql
+-- Users table
+users: id, email, name, role, password_hash, created_at
+
+-- Tracker connections
+trackers: id, company_id, type, base_url, auth_json
+
+-- Normalized issues
+issues: id, tracker_id, ext_key, assignee_id, title, status, payload_json
+INDEX: (tracker_id, ext_key) for upsert operations
+
+-- Template system
+prompt_templates: id, company_id, name, body_md, lint_json
+
+-- Prompt generation chain
+prompts: id, issue_id, template_id, creator_id, created_at
+prompt_versions: id, prompt_id, version, body_text, tokens_estimate
+outputs: id, prompt_version_id, blob_text, file_path, checksum
+
+-- Analytics
+generation_events: id, prompt_version_id, user_id, tokens_in, tokens_out, ide, timestamp
+```
+
+**Critical Database Considerations:**
+- All FK columns must be indexed
+- Composite index on (tracker_id, ext_key) for idempotent upserts
+- Point-in-time recovery enabled
+- UTF-8 encoding, strict SQL mode
+
+#### 4. API Endpoint Implementation
+
+**Authentication Endpoints:**
+```
+POST /auth/login
+- Body: { email, password }
+- Returns: { accessToken, refreshToken }
+- No auth required
+
+POST /auth/refresh
+- Uses refresh token from HTTP-only cookie
+- Returns: new access + refresh tokens
+```
+
+**Core Business Logic Endpoints:**
+```
+GET /issues
+- Query params: ?status=open&assignee=me
+- Auth: JWT required
+- Returns: filtered issue array
+
+POST /prompt-templates (admin/lead only)
+- Body: { name, bodyMd, lintJson }
+- Validation: JSON schema linting
+- Returns: { id }
+
+PATCH /prompt-templates/:id (admin/lead only)
+- Body: { bodyMd? }
+- Supports partial updates
+
+POST /prompts/generate (developer+)
+- Body: { issueId, templateId, vars }
+- Process: template + issue data → rendered prompt
+- Returns: { promptVersionId, promptText, tokens }
+- Side effect: creates prompt_version record
+
+POST /outputs (developer+)
+- Content-Type: multipart/form-data
+- Accepts: text or file ≤5MB
+- Deduplication: SHA-256 checksum
+- Storage: /uploads directory (S3-ready)
+
+GET /stats/summary (admin/lead only)
+- Returns: { promptsToday, avgTokens }
+- Must use indexed queries for <200ms response
+```
+
+#### 5. Prompt Template Engine
+
+**Template Processing:**
+- **Format:** Markdown + Handlebars placeholders
+- **Variables:** `{{title}}`, `{{description}}`, `{{criteria}}`, etc.
+- **Validation:** Lint against JSON schema before save
+- **Token Estimation:** Use GPT-3.5 tokenizer library
+
+**Template Management:**
+- Version history retention
+- Immutable prompt_versions (never update, only create)
+- Template override support in generation API
+
+#### 6. File Upload & Output Management
+
+**File Handling:**
+- Max size: 5MB per upload
+- Virus scanning: ClamAV container integration
+- Deduplication: SHA-256 checksum comparison
+- Storage: Local `/uploads` (designed for S3 migration)
+
+**Output Linking:**
+- Each output links to specific prompt_version
+- Support both text blobs and file references
+- Maintain audit trail of all captures
+
+#### 7. Background Job System
+
+**BullMQ Implementation:**
+- **Tracker Sync Jobs:** Every 5 minutes
+- **Delta Processing:** Only fetch `updated > lastSync`
+- **Error Handling:** Exponential backoff, dead letter queue
+- **Monitoring:** Job status dashboard (future)
+
+**Job Types:**
+```typescript
+// Sync jobs
+'sync-jira-issues'
+'sync-teamwork-issues'
+
+// Future jobs
+'process-webhook'
+'cleanup-old-outputs'
+```
+
+#### 8. Logging & Monitoring
+
+**Winston Configuration:**
+- **Format:** JSON logs to stdout
+- **Log Levels:** error, warn, info, debug
+- **Structured Data:** Include userId, requestId, timestamps
+
+**Prometheus Metrics:**
+- Use `express-prom-bundle` middleware
+- Track: request duration, error rates, queue lengths
+- Custom metrics: prompts generated, tokens processed
+
+#### 9. Security Implementation
+
+**Transport Security:**
+- HTTPS-only (redirect HTTP)
+- HSTS headers enabled
+- Secure cookie flags
+
+**Input Validation:**
+- Zod schemas for all endpoints
+- Parameterized queries (Prisma ORM)
+- File type validation on uploads
+
+**Audit Trail:**
+- Log all CRUD operations
+- Track generation events
+- Maintain IP address + user agent logs
+
+#### 10. Testing Requirements
+
+**Unit Tests (Jest + Supertest):**
+- ≥80% line coverage required
+- Mock external API calls
+- Test all business logic paths
+- Database integration tests with test DB
+
+**Test Categories:**
+- Authentication flows
+- Template rendering engine
+- Issue normalization logic
+- API endpoint validation
+- File upload handling
+
+### 🛠️ Development Workflow
+
+**Local Development:**
+1. `docker-compose up -d` (MySQL + Redis)
+2. `npm run dev` (ts-node with hot reload)
+3. `npm run db:migrate` (Prisma migrations)
+4. `npm run test:watch` (Jest in watch mode)
+
+**Code Quality Gates:**
+- TypeScript strict mode
+- ESLint + Prettier
+- Pre-commit hooks
+- OpenAPI schema validation in CI
+
+**Database Migrations:**
+- Use Prisma migration system
+- All schema changes via migration files
+- Rollback strategy for production deployments
+
+### 🚀 Deployment Considerations
+
+**Docker Configuration:**
+- Multi-stage build for minimal image size
+- Non-root user for security
+- Health check endpoints
+
+**Environment Variables:**
+```
+DATABASE_URL=mysql://...
+REDIS_URL=redis://...
+JWT_SECRET=...
+JIRA_CLIENT_ID=...
+JIRA_CLIENT_SECRET=...
+TEAMWORK_API_KEY=...
+```
+
+**GitLab CI Pipeline:**
+1. Lint & Type Check
+2. Unit Tests
+3. Build Docker Image
+4. Security Scanning
+5. Deploy to staging/production
+
+### 📈 Performance Optimization
+
+**Database Optimization:**
+- Index all FK columns
+- Composite indexes for query patterns
+- Connection pooling (Prisma)
+- Query optimization for stats endpoints
+
+**Caching Strategy:**
+- Redis for session storage
+- Template caching (memory + TTL)
+- Issue metadata caching
+- Rate limiting per user/IP
+
+**Monitoring & Alerting:**
+- Response time percentiles
+- Database connection pool status
+- Queue depth monitoring
+- Error rate thresholds
+
+### 🔄 Future Extensibility Design
+
+**Plugin Architecture:**
+- Dependency injection container
+- New TrackerClient implementations
+- Middleware pipeline for requests
+- Event-driven architecture for integrations
+
+**Extension Points:**
+- Additional tracker types (Asana, ClickUp)
+- MCP telemetry streaming
+- IDE plugin WebSocket endpoints
+- AI review bot integrations
+
+This backend implementation provides a solid foundation for the MVP while maintaining flexibility for future enhancements.

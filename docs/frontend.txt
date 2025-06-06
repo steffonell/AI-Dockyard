@@ -1,0 +1,662 @@
+# Frontend Development Instructions
+## Issue-to-Prompt Generation Platform (MVP v0.1)
+
+### 🚀 Tech Stack & Architecture
+
+**Core Technologies:**
+- **Framework:** React 18 (Single Page Application)
+- **Build Tool:** Vite (fast development & build)
+- **Language:** TypeScript (strict mode)
+- **UI Library:** Material-UI (MUI) v6
+- **Routing:** React Router v6
+- **State Management:** Zustand (lightweight & simple)
+- **HTTP Client:** Axios + React Query (data fetching & caching)
+- **Testing:** Playwright (E2E), Jest + React Testing Library (unit)
+- **Styling:** MUI Theme System + CSS-in-JS
+
+**Architecture Pattern:** Feature-Based Organization
+```
+src/
+├── components/     # Reusable UI components
+├── pages/         # Route-level page components
+├── features/      # Feature-specific modules
+├── hooks/         # Custom React hooks
+├── store/         # Zustand stores
+├── services/      # API client & business logic
+├── types/         # TypeScript type definitions
+└── utils/         # Helper functions
+```
+
+### 📋 Development Setup Requirements
+
+**Pre-requisites:**
+- Node.js 18+ (for React 18 compatibility)
+- Modern browser (Chrome/Firefox/Safari latest)
+- VS Code with recommended extensions
+
+**Performance Targets:**
+- First Contentful Paint: <1.5s
+- Largest Contentful Paint: <2.5s
+- Cumulative Layout Shift: <0.1
+- Bundle size: <500KB gzipped
+
+### 🎨 UI/UX Implementation Requirements
+
+#### 1. Design System & Theming
+
+**MUI Theme Configuration:**
+```typescript
+// Theme structure
+const theme = createTheme({
+  palette: {
+    mode: 'light', // or 'dark'
+    primary: { main: '#1976d2' },
+    secondary: { main: '#dc004e' },
+    background: { default: '#f5f5f5' }
+  },
+  typography: {
+    fontFamily: '"Inter", "Roboto", sans-serif'
+  },
+  components: {
+    // Custom component overrides
+  }
+});
+```
+
+**Responsive Design:**
+- **Desktop First:** ≥1024px primary target
+- **Breakpoints:** xs(0), sm(600), md(900), lg(1200), xl(1536)
+- **Mobile Adaptation:** Responsive tables, collapsible navigation
+- **Accessibility:** WCAG 2.1 AA compliance
+
+**Theme Features:**
+- Dark/Light mode toggle with persistence
+- Consistent spacing scale (8px grid)
+- Typography scale with semantic variants
+- Color palette with accessibility contrast ratios
+
+#### 2. Page Components & User Flows
+
+**Login Page (`/login`):**
+```typescript
+interface LoginPageProps {
+  onLoginSuccess: (tokens: AuthTokens) => void;
+}
+
+// Features:
+// - Email/password form validation
+// - "Forgot Password?" link (future)
+// - Loading states during authentication
+// - Error handling with user-friendly messages
+// - Redirect to /issues on successful login
+```
+
+**Issue List Page (`/issues`):**
+```typescript
+interface IssueListPageProps {
+  filters: IssueFilters;
+  onIssueSelect: (issue: Issue) => void;
+}
+
+// Features:
+// - DataGrid with sorting, filtering, pagination
+// - Search functionality (real-time)
+// - Sync status indicator
+// - Issue status badges
+// - Click-to-expand issue details panel
+// - "Generate Prompt" action button
+```
+
+**Prompt Generation Wizard (`/prompts/new`):**
+```typescript
+interface PromptWizardProps {
+  issue: Issue;
+  onComplete: (prompt: GeneratedPrompt) => void;
+}
+
+// Multi-step workflow:
+// Step 1: Template Selection
+// - Template preview with syntax highlighting
+// - Template description and variable list
+// 
+// Step 2: Variable Configuration
+// - Auto-filled from issue data
+// - Manual override capabilities
+// - Real-time preview of rendered prompt
+// - Auto-save draft functionality
+//
+// Step 3: Review & Copy
+// - Final prompt display
+// - One-click copy to clipboard
+// - Token count estimation
+// - Save to prompt history
+```
+
+**Template Manager Page (`/templates`):**
+```typescript
+interface TemplateManagerProps {
+  userRole: UserRole;
+  onTemplateUpdate: (template: Template) => void;
+}
+
+// Features (admin/lead only):
+// - Template CRUD operations
+// - Split-pane: list view + editor
+// - Markdown editor with live preview
+// - JSON schema validation UI
+// - Version history viewer
+// - Template usage analytics
+```
+
+**Metrics Dashboard (`/dashboard`):**
+```typescript
+interface DashboardProps {
+  refreshInterval: number; // 30 seconds
+}
+
+// Features (admin/lead only):
+// - Key metrics cards:
+//   * Total prompts today
+//   * Average tokens per prompt
+//   * Active users count
+//   * Success rate percentage
+// - Auto-refresh every 30 seconds
+// - Prompts per issue bar chart (future)
+// - Export functionality (future)
+```
+
+#### 3. Reusable Component Library
+
+**Core Components to Build:**
+
+```typescript
+// Authentication Components
+<LoginForm onSubmit={handleLogin} loading={isLoading} />
+<ProtectedRoute requiredRole="developer" />
+
+// Data Display Components
+<IssueCard issue={issue} onSelect={handleSelect} />
+<IssueStatusBadge status={issue.status} />
+<SyncStatusIndicator lastSync={timestamp} />
+<TokenCountBadge count={1250} />
+
+// Form Components
+<TemplateEditor value={markdown} onChange={handleChange} />
+<VariableInput name="title" value={value} onChange={handleChange} />
+<FileUploadZone onUpload={handleUpload} maxSize="5MB" />
+
+// Navigation Components
+<AppNavigation currentUser={user} />
+<BreadcrumbTrail path={currentPath} />
+
+// Feedback Components
+<LoadingSpinner size="medium" />
+<ErrorBoundary fallback={<ErrorMessage />} />
+<SuccessSnackbar message="Prompt saved!" />
+<ConfirmDialog title="Delete template?" onConfirm={handleDelete} />
+```
+
+### 🔐 Authentication & State Management
+
+#### 1. Authentication Flow
+
+**JWT Token Handling:**
+```typescript
+// Auth store (Zustand)
+interface AuthStore {
+  user: User | null;
+  accessToken: string | null;
+  isAuthenticated: boolean;
+  login: (credentials: LoginCredentials) => Promise<void>;
+  logout: () => void;
+  refreshToken: () => Promise<void>;
+}
+
+// Token persistence:
+// - Access token in memory only (security)
+// - Refresh token in HTTP-only cookie (backend handled)
+// - Auto-refresh before expiration
+// - Redirect to login on auth failure
+```
+
+**Route Protection:**
+```typescript
+// Role-based route guards
+<ProtectedRoute requiredRole="admin">
+  <TemplateManager />
+</ProtectedRoute>
+
+<ProtectedRoute requiredRole="developer">
+  <PromptWizard />
+</ProtectedRoute>
+```
+
+#### 2. Global State Architecture
+
+**Zustand Store Organization:**
+```typescript
+// Separate stores by domain
+useAuthStore()     // Authentication state
+useIssueStore()    // Issue management
+useTemplateStore() // Template management
+useUIStore()       // UI state (theme, notifications)
+usePromptStore()   // Prompt generation state
+```
+
+**State Persistence:**
+- Theme preference in localStorage
+- Form drafts in sessionStorage
+- User preferences in localStorage
+- Sensitive data never persisted client-side
+
+### 🌐 API Integration & Data Fetching
+
+#### 1. React Query Setup
+
+**Query Configuration:**
+```typescript
+// Query client setup
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000, // 5 minutes
+      cacheTime: 10 * 60 * 1000, // 10 minutes
+      retry: (failureCount, error) => {
+        if (error.status === 401) return false; // Don't retry auth errors
+        return failureCount < 3;
+      }
+    }
+  }
+});
+
+// Custom hooks for each entity
+useIssues(filters: IssueFilters)
+useIssue(issueId: string)
+useTemplates()
+useTemplate(templateId: string)
+useGeneratePrompt()
+useUploadOutput()
+useStats()
+```
+
+**Error Handling Strategy:**
+```typescript
+// Global error handling
+const ErrorBoundary = ({ children }: PropsWithChildren) => {
+  return (
+    <QueryErrorResetBoundary>
+      {({ reset }) => (
+        <ReactErrorBoundary
+          onReset={reset}
+          fallbackRender={({ error, resetErrorBoundary }) => (
+            <ErrorFallback error={error} onReset={resetErrorBoundary} />
+          )}
+        >
+          {children}
+        </ReactErrorBoundary>
+      )}
+    </QueryErrorResetBoundary>
+  );
+};
+```
+
+#### 2. API Client Architecture
+
+**Axios Configuration:**
+```typescript
+// API client with interceptors
+const apiClient = axios.create({
+  baseURL: process.env.VITE_API_BASE_URL,
+  timeout: 10000,
+});
+
+// Request interceptor (add auth token)
+apiClient.interceptors.request.use((config) => {
+  const token = useAuthStore.getState().accessToken;
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Response interceptor (handle auth errors)
+apiClient.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error.response?.status === 401) {
+      // Try to refresh token or redirect to login
+      await handleTokenRefresh();
+    }
+    return Promise.reject(error);
+  }
+);
+```
+
+### 🎭 User Experience Features
+
+#### 1. Loading States & Feedback
+
+**Loading Patterns:**
+- **Skeleton loaders** for data tables
+- **Progressive loading** for large lists
+- **Optimistic updates** for form submissions
+- **Background refresh** indicators
+
+**User Feedback:**
+```typescript
+// Toast notifications
+const { showSuccess, showError, showInfo } = useNotifications();
+
+// Examples:
+showSuccess('Prompt copied to clipboard!');
+showError('Failed to save template. Please try again.');
+showInfo('Syncing issues from Jira...');
+```
+
+#### 2. Keyboard Shortcuts
+
+**Global Shortcuts:**
+- `G I` - Go to Issues page
+- `G T` - Go to Templates page
+- `G D` - Go to Dashboard
+- `Ctrl/Cmd + K` - Open command palette (future)
+- `?` - Show keyboard shortcuts help
+
+**Context-Specific:**
+- `Enter` - Submit forms
+- `Escape` - Close modals/cancel actions
+- `Ctrl/Cmd + C` - Copy prompt text
+- `Ctrl/Cmd + S` - Save template draft
+
+#### 3. Accessibility Features
+
+**WCAG 2.1 AA Compliance:**
+- Proper heading hierarchy (h1, h2, h3...)
+- Alt text for all images
+- Keyboard navigation support
+- Focus management in modals
+- Color contrast ratios ≥4.5:1
+- Screen reader announcements
+
+**Accessibility Testing:**
+- axe-core integration in development
+- Keyboard-only navigation testing
+- Screen reader testing (NVDA/JAWS)
+
+### 📱 Responsive Design Implementation
+
+#### 1. Mobile-First Adaptations
+
+**Navigation:**
+- Collapsible sidebar on mobile
+- Bottom navigation for primary actions
+- Swipe gestures for common actions
+
+**Data Tables:**
+- Horizontal scroll with sticky columns
+- Card layout for mobile views
+- Expandable row details
+
+**Forms:**
+- Touch-friendly input sizes (44px minimum)
+- Native mobile keyboard types
+- Proper viewport meta tag
+
+#### 2. Performance Optimizations
+
+**Code Splitting:**
+```typescript
+// Route-based splitting
+const IssueListPage = lazy(() => import('./pages/IssueListPage'));
+const TemplateManager = lazy(() => import('./pages/TemplateManager'));
+
+// Feature-based splitting
+const PromptWizard = lazy(() => import('./features/prompts/PromptWizard'));
+```
+
+**Bundle Optimization:**
+- Tree shaking enabled
+- Dynamic imports for heavy components
+- MUI component optimization
+- Image optimization and lazy loading
+
+### 🧪 Testing Strategy
+
+#### 1. Unit Testing (Jest + React Testing Library)
+
+**Testing Categories:**
+```typescript
+// Component testing
+describe('IssueCard', () => {
+  it('displays issue title and status', () => {});
+  it('calls onSelect when clicked', () => {});
+  it('shows loading state appropriately', () => {});
+});
+
+// Hook testing
+describe('useIssues', () => {
+  it('fetches issues on mount', () => {});
+  it('handles loading states', () => {});
+  it('handles error states', () => {});
+});
+
+// Store testing
+describe('authStore', () => {
+  it('updates state on successful login', () => {});
+  it('clears state on logout', () => {});
+});
+```
+
+**Coverage Requirements:**
+- Component logic: ≥80%
+- Custom hooks: ≥90%
+- Store logic: ≥95%
+- Utility functions: 100%
+
+#### 2. E2E Testing (Playwright)
+
+**Critical User Flows:**
+```typescript
+// Authentication flow
+test('user can log in and access dashboard', async ({ page }) => {
+  await page.goto('/login');
+  await page.fill('[data-testid=email]', 'test@example.com');
+  await page.fill('[data-testid=password]', 'password');
+  await page.click('[data-testid=login-button]');
+  await expect(page).toHaveURL('/issues');
+});
+
+// Prompt generation flow
+test('user can generate prompt from issue', async ({ page }) => {
+  // Login, select issue, generate prompt, verify output
+});
+
+// Template management flow
+test('admin can create and edit templates', async ({ page }) => {
+  // Login as admin, create template, verify save
+});
+```
+
+### 🚀 Development Workflow
+
+#### 1. Local Development Setup
+
+**Development Scripts:**
+```json
+{
+  "scripts": {
+    "dev": "vite --port 3000",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:e2e": "playwright test",
+    "lint": "eslint src --ext .ts,.tsx",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix",
+    "type-check": "tsc --noEmit"
+  }
+}
+```
+
+**Development Tools:**
+- **VS Code Extensions:**
+  - ES7+ React/Redux/React-Native snippets
+  - Prettier - Code formatter
+  - ESLint
+  - TypeScript Importer
+  - Auto Rename Tag
+
+**Hot Reload & Fast Refresh:**
+- Vite HMR for instant updates
+- React Fast Refresh for state preservation
+- CSS hot reload for styling changes
+
+#### 2. Code Quality Standards
+
+**ESLint Configuration:**
+```javascript
+module.exports = {
+  extends: [
+    '@typescript-eslint/recommended',
+    'plugin:react/recommended',
+    'plugin:react-hooks/recommended',
+    'prettier'
+  ],
+  rules: {
+    // Custom rules for consistency
+    'react/prop-types': 'off', // Using TypeScript
+    '@typescript-eslint/no-unused-vars': 'error',
+    'react-hooks/exhaustive-deps': 'warn'
+  }
+};
+```
+
+**Pre-commit Hooks:**
+- Type checking (tsc --noEmit)
+- Linting (ESLint)
+- Code formatting (Prettier)
+- Test execution on changed files
+
+### 🌍 Deployment & Build Configuration
+
+#### 1. Vite Build Optimization
+
+**Build Configuration:**
+```typescript
+// vite.config.ts
+export default defineConfig({
+  plugins: [react()],
+  build: {
+    target: 'es2015',
+    outDir: 'dist',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          mui: ['@mui/material', '@mui/icons-material'],
+          router: ['react-router-dom']
+        }
+      }
+    }
+  },
+  define: {
+    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV)
+  }
+});
+```
+
+#### 2. Environment Configuration
+
+**Environment Variables:**
+```bash
+# .env.local
+VITE_API_BASE_URL=http://localhost:3001/api
+VITE_APP_VERSION=1.0.0
+VITE_ENABLE_ANALYTICS=false
+VITE_SENTRY_DSN=your_sentry_dsn
+```
+
+**Docker Configuration:**
+```dockerfile
+# Multi-stage build
+FROM node:18-alpine as builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+
+FROM nginx:alpine
+COPY --from=builder /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/nginx.conf
+EXPOSE 80
+```
+
+### 📊 Performance Monitoring
+
+#### 1. Core Web Vitals Tracking
+
+**Performance Metrics:**
+```typescript
+// Performance monitoring
+import { getCLS, getFID, getFCP, getLCP, getTTFB } from 'web-vitals';
+
+function sendToAnalytics(metric: Metric) {
+  // Send to analytics service
+  console.log(metric);
+}
+
+getCLS(sendToAnalytics);
+getFID(sendToAnalytics);
+getFCP(sendToAnalytics);
+getLCP(sendToAnalytics);
+getTTFB(sendToAnalytics);
+```
+
+#### 2. Error Monitoring
+
+**Sentry Integration:**
+```typescript
+import * as Sentry from '@sentry/react';
+
+Sentry.init({
+  dsn: process.env.VITE_SENTRY_DSN,
+  integrations: [new Sentry.BrowserTracing()],
+  tracesSampleRate: 0.1,
+});
+
+// Error boundary with Sentry
+const SentryErrorBoundary = Sentry.withErrorBoundary(App, {
+  fallback: ErrorFallback,
+  beforeCapture: (scope) => {
+    scope.setTag('component', 'App');
+  }
+});
+```
+
+### 🔄 Future Enhancement Considerations
+
+#### 1. Progressive Web App Features
+
+**PWA Implementation:**
+- Service worker for offline functionality
+- App manifest for installation
+- Push notifications for updates
+- Background sync for form submissions
+
+#### 2. Advanced Features Roadmap
+
+**Command Palette (vNext):**
+- Global search and navigation
+- Quick actions and shortcuts
+- Recent items and suggestions
+
+**Real-time Updates:**
+- WebSocket integration for live updates
+- Real-time collaboration on templates
+- Live sync status indicators
+
+**Advanced Analytics:**
+- User behavior tracking
+- Performance metrics dashboard
+- A/B testing framework
+
+This frontend implementation provides a modern, accessible, and performant user interface that scales with the platform's growth while maintaining excellent user experience standards.

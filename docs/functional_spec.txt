@@ -1,0 +1,157 @@
+## Functional Specification
+
+**Issue-to-Prompt Generation Platform (MVP v0.1 — June 2025)**
+
+---
+
+### 1 . Executive Summary
+
+This platform turns project-management issues (Jira, Teamwork) into production-ready prompts for AI coding assistants such as **Cursor** and **Windsurf**. By ingesting ticket data, applying company-approved templates, and storing every prompt/output pair, the system standardises AI-assisted development while preserving full traceability.
+
+The MVP focuses on three pillars: **(1)** two-way synchronisation with Jira and Teamwork, **(2)** a prompt-templating engine that enforces internal standards, and **(3)** secure persistence/analytics for all prompts and generated artefacts. The architecture—Node.js/Express back-end, React front-end, MySQL 8 database—deliberately leaves extension points for additional trackers, richer telemetry (MCP), and IDE plug-ins without major refactor.
+
+---
+
+### 2 . System Overview
+
+| Layer             | Components (MVP)                                                                     | Notes                                            |
+| ----------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------ |
+| **Presentation**  | React 18 SPA, MUI, React Router, Axios + React Query                                 | Runs in browser; JWT auth; dark/light themes.    |
+| **API**           | Node 20 · Express 5 (TypeScript)                                                     | REST + JSON; Zod validation; OpenAPI auto-docs.  |
+| **Integration**   | • **TrackerConnector** service (Jira/Teamwork)<br>• BullMQ workers for periodic sync | OAuth 2.0 (Jira), Personal Token (Teamwork).     |
+| **Domain**        | PromptService, TemplateService, OutputService                                        | Encapsulate business logic (clean architecture). |
+| **Persistence**   | MySQL 8 (Prisma ORM)                                                                 | Single schema, ready for read replicas.          |
+| **Auth/Security** | JWT access/refresh, BCrypt passwords, RBAC middleware                                | Prepared for SSO in vNext.                       |
+| **CI/CD**         | GitLab pipelines, Docker images                                                      | Lint → Test → Build → Push.                      |
+
+**Runtime flow**:
+Browser ⇄ Express API ⇄ MySQL
+                     ↳ Tracker APIs (via workers)
+
+---
+
+### 3 . Functional Requirements
+
+| #         | Requirement                    | Technical Implementation & Challenges                                                                                                                                                                                            |
+| --------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **FR-1**  | **User Authentication & RBAC** | JWT (HS256) access (15 min) + refresh (7 days); roles: *admin*, *lead*, *developer*; `/auth/login` issues tokens. Challenge: refresh-token revocation → store token id in Redis.                                                 |
+| **FR-2**  | **Tracker Integration**        | Generic `TrackerClient` interface. Implement `JiraClient` (OAuth 2.0, pagination) and `TeamworkClient` (token). Sync via BullMQ every 5 min; delta filtering `updated > lastSync`. Handle webhook fallback for self-hosted Jira. |
+| **FR-3**  | **Issue Normalisation**        | Map tracker fields → internal schema (`title`, `description`, `labels`, `priority`, `acceptanceCriteria`). Store raw payload JSON for audit.                                                                                     |
+| **FR-4**  | **Prompt Template Management** | CRUD endpoints; Markdown + Handlebars placeholders (`{{title}}`, `{{criteria}}`, etc.); lint against JSON schema before save.                                                                                                    |
+| **FR-5**  | **Prompt Generation**          | `POST /prompts/generate` takes `issueId`, `templateId`, overrides → produces immutable `prompt_version` row and returns text. Estimate token count via gpt-3.5 tokenizer lib.                                                    |
+| **FR-6**  | **Output Capture & Storage**   | `POST /outputs` accepts text or file ≤5 MB; SHA-256 dedupe; store in `/uploads` (switchable to S3).                                                                                                                              |
+| **FR-7**  | **Prompt & Output Linking**    | DB relations: `issues → prompts → prompt_versions → outputs`.                                                                                                                                                                    |
+| **FR-8**  | **Basic Metrics Endpoint**     | Insert row in `generation_events` on every generation/save. `GET /stats/summary` aggregates counts and avg tokens with indexed queries.                                                                                          |
+| **FR-9**  | **OpenAPI Documentation**      | Swagger auto-generated at `/docs`; CI fails if schema and implementation diverge.                                                                                                                                                |
+| **FR-10** | **Unit & E2E Testing**         | Jest + Supertest (≥80 % lines) for back-end; Playwright flows (login, generate prompt) for front-end.                                                                                                                            |
+
+---
+
+### 4 . Technical Requirements
+
+| Area                     | Specification                                                                                      |
+| ------------------------ | -------------------------------------------------------------------------------------------------- |
+| **Backend**              | Node 20, Express 5, TypeScript, ts-node, Zod, Prisma ORM, BullMQ (Redis), OpenAPI 3.1.             |
+| **Frontend**             | React 18, Vite, TypeScript, MUI v6, React Query, Zustand, Playwright.                              |
+| **Database**             | MySQL 8; UTF-8, strict SQL mode; point-in-time recovery enabled.                                   |
+| **Containerisation**     | Docker-compose for local; GitLab CI builds multi-arch images.                                      |
+| **Performance**          | 95th percentile API latency <400 ms; prompt generation <200 ms server-side.                        |
+| **Logging & Monitoring** | Winston JSON logs to stdout; Prometheus metrics (express-prom-bundle); Grafana dashboards (vNext). |
+
+---
+
+### 5 . User Stories
+
+| ID       | User Story                                                                                     | Acceptance Criteria                                                                                                                                                  |
+| -------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **US-1** | *As a developer* I can log in and see all open Jira/Teamwork issues assigned to me.            | • Login with email + password returns JWT.<br>• `/issues` table shows only issues where `assignee = me`.<br>• Sync delay ≤10 min.                                    |
+| **US-2** | *As a developer* I can generate a prompt from an issue and copy it with one click.             | • “Generate Prompt” opens wizard.<br>• Placeholders auto-filled from issue.<br>• Saving creates prompt\_version row.<br>• Copy button copies full text to clipboard. |
+| **US-3** | *As a PM/Lead* I can create and update prompt templates with validation rules.                 | • Markdown editor with preview.<br>• Invalid JSON schema blocks save.<br>• Version history retained.                                                                 |
+| **US-4** | *As a developer* I can attach AI-generated code/output back to the prompt for auditing.        | • Modal accepts text/file.<br>• Output linked to correct prompt\_version.<br>• Duplicate uploads rejected via checksum.                                              |
+| **US-5** | *As an admin* I can view a metrics dashboard showing total prompts and average tokens per day. | • `/stats/summary` returns totals.<br>• Front-end cards render numbers updated every 30 s.<br>• Query uses indexed columns—response <200 ms.                         |
+
+---
+
+### 6 . API Specifications (MVP)
+
+| Method    | Endpoint                | Auth       | Body / Params                   | Success (200)                             |
+| --------- | ----------------------- | ---------- | ------------------------------- | ----------------------------------------- |
+| **POST**  | `/auth/login`           | –          | `{ email, password }`           | `{ accessToken, refreshToken }`           |
+| **GET**   | `/issues`               | JWT        | `?status=open&assignee=me`      | `[{ issue }]`                             |
+| **POST**  | `/prompt-templates`     | admin/lead | `{ name, bodyMd, lintJson }`    | `{ id }`                                  |
+| **PATCH** | `/prompt-templates/:id` | admin/lead | `{ bodyMd? }`                   | `{ ok: true }`                            |
+| **POST**  | `/prompts/generate`     | dev        | `{ issueId, templateId, vars }` | `{ promptVersionId, promptText, tokens }` |
+| **POST**  | `/outputs`              | dev        | `multipart/form-data` text/file | `{ outputId }`                            |
+| **GET**   | `/stats/summary`        | admin/lead | –                               | `{ promptsToday, avgTokens }`             |
+
+Webhook receiver (future) stub: `POST /webhook/jira`.
+
+---
+
+### 7 . Database Schema (simplified)
+
+| Table                  | Primary • Foreign Keys                           | Key Columns                                              |
+| ---------------------- | ------------------------------------------------ | -------------------------------------------------------- |
+| **users**              | `id`                                             | email · name · role · pw\_hash · created\_at             |
+| **trackers**           | `id`                                             | company\_id · type · base\_url · auth\_json              |
+| **issues**             | `id`, FK `tracker_id`                            | ext\_key · assignee\_id · title · status · payload\_json |
+| **prompt\_templates**  | `id`                                             | company\_id · name · body\_md · lint\_json               |
+| **prompts**            | `id`, FK `issue_id`, `template_id`, `creator_id` | created\_at                                              |
+| **prompt\_versions**   | `id`, FK `prompt_id`                             | version · body\_text · tokens\_estimate                  |
+| **outputs**            | `id`, FK `prompt_version_id`                     | blob\_text · file\_path · checksum                       |
+| **generation\_events** | `id`, FK `prompt_version_id`, `user_id`          | tokens\_in · tokens\_out · ide · ts                      |
+
+All FK columns indexed; composite index `(tracker_id, ext_key)` ensures idempotent upserts.
+
+---
+
+### 8 . Security & Authentication
+
+1. **Transport**: HTTPS-only; HSTS enabled.
+2. **Auth**:
+
+   * **Login** → `/auth/login` (email/pass).
+   * **Access token** (JWT, HS256, 15 min) in `Authorization: Bearer`.
+   * **Refresh token** (JWT, http-only secure cookie) rotates every use.
+   * Optional Redis blacklist for logout/all-device revoke.
+3. **RBAC Middleware**: route-level role checks.
+4. **Data Protection**:
+
+   * BCrypt 12 cost password hashing.
+   * Parameterised queries via Prisma.
+   * File uploads virus-scanned (ClamAV container).
+5. **Audit Trail**: all login, CRUD, and generation events logged with UTC timestamp and IP.
+
+---
+
+### 9 . UI / UX Requirements
+
+| Page                  | Key Elements                                                                  | Workflow                                     |
+| --------------------- | ----------------------------------------------------------------------------- | -------------------------------------------- |
+| **Login**             | Email, password, “Forgot?”.                                                   | Successful → JWT stored; redirect `/issues`. |
+| **Issue List**        | DataGrid (search, filter, sync badge).                                        | Click row → Issue details panel.             |
+| **Prompt Wizard**     | Step 1: pick template • Step 2: fill vars (autosave) • Step 3: review & copy. | Finish → snackbar “Prompt saved & copied”.   |
+| **Output Modal**      | Textarea + drag-drop file.                                                    | “Save Output” → link to prompt version.      |
+| **Template Manager**  | Table + Markdown editor side-by-side.                                         | Save creates new template version.           |
+| **Metrics Dashboard** | Cards: total prompts today, avg tokens, prompts/issue bar chart (vNext).      | Auto-refresh every 30 s.                     |
+
+Responsive design (≥1024 px desktop first); keyboard shortcuts: **G I** (go to issues), **G T** (templates).
+
+---
+
+### 10 . Future Extensibility
+
+| Road-Map Item                            | Architectural Considerations                                                             |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------- |
+| **Additional Trackers** (Asana, ClickUp) | Implement new `TrackerClient`; register in DI container—no API changes.                  |
+| **MCP Telemetry**                        | Stream generation events to Kafka → ClickHouse; UI graphs via Grafana iframe.            |
+| **IDE Plug-ins**                         | WebSocket endpoint `/ws/ide`; plugin can push outputs directly.                          |
+| **AI Review Bot**                        | New micro-service consumes `outputs` and `acceptanceCriteria`, posts score back via API. |
+| **Multitenancy**                         | Add `company_id` to all tables (already present); enforce row-level RBAC.                |
+| **SSO (OIDC/SAML)**                      | Replace local login route with IdP redirect; keep JWT for session.                       |
+
+The clean separation between **Integration**, **Domain**, and **API** layers ensures each enhancement is isolated and deployable without rewriting core logic.
+
+---
+
+**End of Document**
