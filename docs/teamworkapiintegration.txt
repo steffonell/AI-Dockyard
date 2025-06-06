@@ -1,0 +1,252 @@
+Great, I’ll create documentation for integrating the Teamwork API into your React frontend (using API token auth) to retrieve a user's projects and track task statuses like Created or Closed, with data optionally stored in a MySQL database.
+
+I'll include steps for authentication, API requests, handling task statuses, and environment variable setup. I’ll let you know as soon as it’s ready.
+
+
+# Teamwork API Integration Guide (React + Express)
+
+This guide explains how to securely integrate the Teamwork API using an API token (Basic Auth) in a React frontend with a Node.js/Express backend. We cover authentication, fetching projects and tasks, filtering by status, and optional MySQL persistence.
+
+## 1. Setup & Configuration
+
+1. **Get your Teamwork API Token and Site URL.** In your Teamwork account, go to **Profile (bottom left) → Edit My Details → API & Mobile** and click “Show your token”. Also note your base site URL (e.g. `https://{yourSiteName}.teamwork.com`).
+
+2. **Create a `.env` file.** In your project root (outside any `/src`), create a file named `.env`. Store sensitive values here, e.g.:
+
+   ```env
+   TEAMWORK_API_KEY=your_teamwork_api_token
+   TEAMWORK_SITE=yourSiteName.teamwork.com
+   DB_HOST=localhost
+   DB_USER=dbuser
+   DB_PASS=dbpassword
+   DB_NAME=teamwork_db
+   ```
+
+   This keeps secrets out of your source code and version control. Don’t commit `.env` – add it to `.gitignore`. In Node, load these with [dotenv](https://www.npmjs.com/package/dotenv) (e.g. `require('dotenv').config()`).
+
+3. **Install dependencies.** In your Express app, install required packages:
+
+   ```bash
+   npm install axios express dotenv mysql2
+   ```
+
+   We’ll use **axios** for HTTP calls, **dotenv** for env vars, and **mysql2** (or any MySQL client/ORM) for database access.
+
+## 2. Authentication (API Token)
+
+Teamwork uses **Basic Authentication** with your API token. Include your token as the “username” and any value (often `'x'`) as the password. For example, in an HTTP header:
+
+```
+Authorization: Basic {base64(API_KEY + ":x")}
+```
+
+This hides the token inside Basic Auth. Official docs note you can put the API key as the user and anything (e.g. `'xxx'`) as the password. In code, you might do:
+
+```js
+axios.get(url, {
+  auth: { username: process.env.TEAMWORK_API_KEY, password: 'x' }
+});
+```
+
+Ensure all API calls use HTTPS. *Example (curl)*:
+
+```
+curl -u {API_KEY}:x https://{yourSiteName}.teamwork.com/projects/api/v3/projects.json
+```
+
+(Teamwork’s docs show a similar curl with a Basic header). This will authenticate as the current user. Since the key grants the same access as that user, only projects/tasks accessible to that user are returned.
+
+## 3. Secure API Proxy (Express)
+
+**Do not call Teamwork API directly from React.** Any front-end call can expose the token (e.g. via browser devtools). Instead, create Express routes that act as a proxy: the React app requests your backend (which adds the API key and forwards the request).
+
+For example, an Express route to fetch projects:
+
+```js
+// server.js or api.js
+require('dotenv').config();
+const express = require('express');
+const axios = require('axios');
+const app = express();
+
+app.get('/api/projects', async (req, res) => {
+  try {
+    const url = `https://${process.env.TEAMWORK_SITE}/projects/api/v3/projects.json`;
+    const response = await axios.get(url, {
+      auth: { username: process.env.TEAMWORK_API_KEY, password: 'x' }
+    });
+    res.json(response.data); // send JSON to React
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Error fetching projects');
+  }
+});
+```
+
+Here the Express server attaches the API key from `process.env` (never exposed to the browser). The React front-end can then `fetch('/api/projects')`.
+
+This pattern is recommended for security: use a back-end proxy so the token never appears in client code. As SmashingMag explains, a proxy server “retrieves the API key and makes the request to the API. Once the response is received, it removes the API key before returning the response to the front end”.
+
+*React side example:*
+
+```jsx
+// In a React component (e.g. useEffect)
+useEffect(() => {
+  fetch('/api/projects')
+    .then(res => res.json())
+    .then(data => {
+      console.log(data.projects);  // or update state
+    });
+}, []);
+```
+
+This way, the Teamwork credentials live only on the server.
+
+## 4. Retrieving Projects
+
+To get projects accessible to the user, call the Teamwork Projects API endpoint. According to the official docs, **GET** `/projects/api/v3/projects.json` “returns a list of projects… only the projects that the logged-in user can access”.
+
+In your Express route (as above), hitting `https://{SITE}/projects/api/v3/projects.json` will retrieve all projects for that API user. The JSON response typically includes a `"projects"` array. You can then send `response.data.projects` to the React client.
+
+For example, using **axios** in Express:
+
+```js
+const projectsRes = await axios.get(
+  `https://${process.env.TEAMWORK_SITE}/projects/api/v3/projects.json`,
+  { auth: { username: process.env.TEAMWORK_API_KEY, password: 'x' } }
+);
+const projects = projectsRes.data.projects;
+res.json({ projects });
+```
+
+In React, you can map over this array to display project names, IDs, etc. (Refer to the Teamwork docs for the exact response schema).
+
+*Reference:* Teamwork Projects API [“Returns a list of projects” endpoint](https://apidocs.teamwork.com/docs/teamwork/v3/projects/get-projects-api-v3-projects-json).
+
+## 5. Retrieving & Filtering Tasks
+
+To get tasks (to-dos) for a project or across projects, use the Teamwork Tasks API. For example, to fetch tasks within a specific project, use **GET** `/projects/api/v3/projects/{projectId}/tasks.json`. The docs say this “returns multiple tasks according to the provided filter”.
+
+In Express, you might write:
+
+```js
+app.get('/api/projects/:projectId/tasks', async (req, res) => {
+  const { projectId } = req.params;
+  const url = `https://${process.env.TEAMWORK_SITE}/projects/api/v3/projects/${projectId}/tasks.json`;
+  const response = await axios.get(url, {
+    auth: { username: process.env.TEAMWORK_API_KEY, password: 'x' }
+  });
+  res.json(response.data);
+});
+```
+
+This returns all tasks in that project. In React you would fetch `/api/projects/123/tasks`, parse the JSON, and access the `todo-items` (or similar) array.
+
+**Filtering by status:** Teamwork tasks have a `status` field (e.g. `"new"`, `"completed"`, `"reopened"`, or `"deleted"`). You can filter tasks by status using query parameters. For example, to get only *completed* tasks in a project, add `?completedOnly=true`. The docs list a `completedOnly` boolean parameter:
+
+* **completedOnly=true** – only completed tasks.
+  E.g.: `GET /projects/api/v3/projects/123/tasks.json?completedOnly=true`.
+
+Alternatively, you can use a `status` parameter to filter by “upcoming” or “late” tasks. The API docs indicate a `status` array parameter with allowed values `upcoming`, `late`, or `all`. For example, `?status[]=late` would return only late tasks in the project.
+
+*Example:* Fetch open tasks (non-completed) by filtering out completed ones. React code after getting tasks might filter:
+
+```js
+const tasks = data["todo-items"];
+const openTasks = tasks.filter(task => task.status === "new");
+```
+
+Here we rely on the `status` field in each task object (values are `"new"`, `"completed"`, etc).
+
+For tracking status updates (e.g. tasks moving from “new” to “completed”), you could periodically re-fetch tasks with the above filters, or use the `updatedAfter` query parameter to get recently changed tasks.
+
+*References:*
+
+* Teamwork Tasks API (project-specific) \[“Get a specific project’s tasks”].
+* Task status values \[“Status is the current status… deleted, completed, reopened, new”].
+* Filter params: `completedOnly` and `status` (late/upcoming).
+
+## 6. Storing Data in MySQL (Optional)
+
+To cache or persist project/task data, you can store results in a MySQL database. For example, define basic tables like:
+
+```sql
+CREATE TABLE projects (
+  id INT PRIMARY KEY,
+  name VARCHAR(255),
+  description TEXT,
+  start_date DATE,
+  end_date DATE,
+  status VARCHAR(50)
+);
+
+CREATE TABLE tasks (
+  id INT PRIMARY KEY,
+  project_id INT,
+  content VARCHAR(255),
+  status VARCHAR(50),
+  due_date DATE,
+  FOREIGN KEY (project_id) REFERENCES projects(id)
+);
+```
+
+After fetching data from Teamwork, use a Node MySQL library (e.g. [mysql2](https://www.npmjs.com/package/mysql2) or an ORM) to insert or update these tables. For instance, you might upsert each project by `id`, then similarly upsert each task with its `project_id`. This provides a local cache for fast reads or offline processing.
+
+*Example (Node using mysql2):*
+
+```js
+const mysql = require('mysql2/promise');
+const pool = mysql.createPool({ 
+  host: process.env.DB_HOST, 
+  user: process.env.DB_USER, 
+  password: process.env.DB_PASS, 
+  database: process.env.DB_NAME 
+});
+
+// After fetching projects:
+const projects = fetchedData.projects;
+for (const proj of projects) {
+  await pool.execute(
+    'REPLACE INTO projects (id,name,start_date,end_date,status) VALUES (?,?,?,?,?)',
+    [proj.id, proj.name, proj.startDate, proj.endDate, proj.status]
+  );
+}
+```
+
+Similarly, insert tasks (be mindful of pagination if many tasks). This storage step is optional but can speed up your app by avoiding repeated API calls.
+
+## 7. Environment Variables
+
+Use environment variables for all secrets. In Express, load them at startup (e.g. with [dotenv](https://www.npmjs.com/package/dotenv)):
+
+```js
+require('dotenv').config();
+const apiKey = process.env.TEAMWORK_API_KEY; 
+```
+
+As noted above, never hard-code the API key or DB credentials. Keep the `.env` file out of version control. The Medium article emphasizes that using `.env` provides security and flexibility: keys aren’t accidentally committed, and you can use different values per environment. Always add `.env` to `.gitignore`.
+
+### Example `.env`
+
+```
+TEAMWORK_API_KEY=abc123yourtoken
+TEAMWORK_SITE=company.teamwork.com
+DB_HOST=localhost
+DB_USER=root
+DB_PASS=secret
+DB_NAME=teamwork_cache
+```
+
+You can then reference, for example, `process.env.TEAMWORK_API_KEY` in your code. In React (Create React App), you would prefix React env vars with `REACT_APP_` and access via `process.env.REACT_APP_VAR`, but sensitive calls to Teamwork should go through your Express proxy (so React only needs the proxy endpoint).
+
+## References
+
+* **Teamwork API Authentication** – Basic Auth with API key.
+* **Get Projects (v3)** – `GET /projects/api/v3/projects.json` (returns projects for current user).
+* **Get Tasks (v3)** – `GET /projects/api/v3/projects/{projectId}/tasks.json`.
+* **Task Status Values** – status can be “new”, “completed”, “reopened”, etc.
+* **Filter Params** – `completedOnly=true` for closed tasks; `status` param (upcoming/late).
+* **Environment Variables** – use a `.env` file to store `TEAMWORK_API_KEY`, etc..
+* **Security (Proxy)** – send API requests through your backend to keep the key hidden.
+
+All Teamwork endpoints above are documented in the official API docs (linked) for details on request/response formats.

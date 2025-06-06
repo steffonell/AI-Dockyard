@@ -1,0 +1,187 @@
+Below is an **updated, ready-to-use integration guide** that drops the placeholders and plugs in **your actual Teamwork credentials**:
+
+* **API key:** `twp_AHqW3amssAxEjsEAWtPQDigPeO8q`
+* **Site URL:** `https://agentcocompany.teamwork.com`
+
+> **Heads-up:** keep the real token **only in your private `.env` file** and **never** commit it. All code snippets still load it from `process.env` so you stay safe in production.([medium.com][1], [rsprasangi.medium.com][2])
+
+---
+
+## 1  Setup & Configuration
+
+### 1.1  `.env` (store secrets here)
+
+```env
+# teamwork
+TEAMWORK_API_KEY=twp_AHqW3amssAxEjsEAWtPQDigPeO8q
+TEAMWORK_SITE=agentcocompany.teamwork.com
+
+# mysql (example)
+DB_HOST=localhost
+DB_USER=dbuser
+DB_PASS=dbpassword
+DB_NAME=teamwork_db
+```
+
+Add `.env` to `.gitignore` before your first commit.([medium.com][1], [rsprasangi.medium.com][2]) Load it at runtime:
+
+```js
+require('dotenv').config();   // top of server.js
+```
+
+### 1.2  Dependencies
+
+```bash
+npm install axios express dotenv mysql2
+```
+
+---
+
+## 2  Authentication (Basic Auth with token)
+
+Teamwork’s API expects **Basic Auth** where the *username = API key* and the *password* can be any single character (`x` is common).([apidocs.teamwork.com][3])
+
+```bash
+# quick smoke-test
+curl -u "twp_AHqW3amssAxEjsEAWtPQDigPeO8q":x \
+  https://agentcocompany.teamwork.com/projects/api/v3/projects.json
+```
+
+Over HTTPS you’ll get a JSON object containing `"projects"`.([apidocs.teamwork.com][4])
+
+---
+
+## 3  Secure Proxy (Express)
+
+Never expose the token in React; route calls through Express so the browser only sees `/api/*`.([smashingmagazine.com][5], [smashingmagazine.com][6])
+
+```js
+// api/teamwork.js
+require('dotenv').config();
+const axios = require('axios');
+const router = require('express').Router();
+
+router.get('/projects', async (_, res) => {
+  const url = `https://${process.env.TEAMWORK_SITE}/projects/api/v3/projects.json`;
+  const { data } = await axios.get(url, {
+    auth: { username: process.env.TEAMWORK_API_KEY, password: 'x' }
+  });
+  res.json(data);
+});
+
+router.get('/projects/:id/tasks', async (req, res) => {
+  const url = `https://${process.env.TEAMWORK_SITE}/projects/api/v3/projects/${req.params.id}/tasks.json`;
+  const { data } = await axios.get(url, {
+    auth: { username: process.env.TEAMWORK_API_KEY, password: 'x' }
+  });
+  res.json(data);
+});
+
+module.exports = router;
+```
+
+Mount with `app.use('/api', require('./api/teamwork'));`.
+
+---
+
+## 4  Retrieving Projects
+
+`GET /projects/api/v3/projects.json` returns every project the authenticated user can access.([apidocs.teamwork.com][4])
+
+```js
+const { projects } = await (await fetch('/api/projects')).json();
+```
+
+Display them in React as needed (name, id, status, etc.).
+
+---
+
+## 5  Retrieving & Filtering Tasks
+
+`GET /projects/api/v3/projects/{projectId}/tasks.json` lists tasks for one project.([apidocs.teamwork.com][7])
+
+**Built-in filters**
+
+| Parameter                             | Purpose                                                    |
+| ------------------------------------- | ---------------------------------------------------------- |
+| `completedOnly=true`                  | only *Closed* tasks([apidocs.teamwork.com][8])             |
+| `status[]=late` / `status[]=upcoming` | only *Late* or *Upcoming* tasksciteturn0search3         |
+| `updatedAfter=YYYY-MM-DD`             | sync changes since a given date([apidocs.teamwork.com][4]) |
+
+Example proxy route for open tasks:
+
+```js
+const url =
+  `https://${process.env.TEAMWORK_SITE}/projects/api/v3/projects/${id}/tasks.json?completedOnly=false`;
+```
+
+Each task includes `status` (`"new"`, `"completed"`, `"reopened"`, `"deleted"`).([apidocs.teamwork.com][9]) Filter client-side if you wish:
+
+```js
+const open = tasks.filter(t => t.status === 'new');
+```
+
+---
+
+## 6  Optional MySQL Cache
+
+```sql
+CREATE TABLE projects (
+  id INT PRIMARY KEY,
+  name VARCHAR(255),
+  status VARCHAR(50),
+  start_date DATE,
+  end_date DATE
+);
+
+CREATE TABLE tasks (
+  id INT PRIMARY KEY,
+  project_id INT,
+  content VARCHAR(255),
+  status VARCHAR(50),
+  due_date DATE,
+  FOREIGN KEY (project_id) REFERENCES projects(id)
+);
+```
+
+Then upsert:
+
+```js
+await pool.execute(
+  'REPLACE INTO tasks (id,project_id,content,status,due_date) VALUES (?,?,?,?,?)',
+  [t.id, projectId, t.content, t.status, t.dueDate]
+);
+```
+
+---
+
+## 7  Environment & Security Checklist
+
+1. **`.env` only**, never hard-code.([medium.com][1], [rsprasangi.medium.com][2])
+2. **HTTPS everywhere**; Basic Auth is base64, not encrypted.([apidocs.teamwork.com][3])
+3. **Rotate tokens** immediately if leaked (Profile → API & Mobile → “Regenerate”).([apidocs.teamwork.com][10])
+4. Use **backend proxy** to hide key from React.([smashingmagazine.com][5], [smashingmagazine.com][6])
+
+---
+
+### Key References
+
+* Teamwork **Authentication guide** (Basic Auth)([apidocs.teamwork.com][3])
+* Projects endpoint (`/projects.json`)([apidocs.teamwork.com][4])
+* Tasks endpoint (`/tasks.json`) & filters([apidocs.teamwork.com][7], [apidocs.teamwork.com][8])
+* Task status values (“new/completed/reopened/deleted”)([apidocs.teamwork.com][9])
+* Keeping secrets in `.env` and out of Git([medium.com][1], [rsprasangi.medium.com][2])
+* Why you need a **server-side proxy** for React keys([smashingmagazine.com][5], [smashingmagazine.com][6])
+
+This updated guide can be pasted straight into your internal wiki or README so your devs can connect React ↔ Express ↔ Teamwork with **zero guesswork**.
+
+[1]: https://medium.com/%40kimberly.d.benton/env-how-to-keep-a-secret-python-react-7cdf77848f88?utm_source=chatgpt.com ".ENV — How to keep a secret (Python) | by Kimberly Benton | Medium"
+[2]: https://rsprasangi.medium.com/stop-leaking-secrets-in-git-forever-secret-management-101-for-devs-whove-had-enough-6f024a6be2b4?utm_source=chatgpt.com "Stop Leaking Secrets in Git – Forever: Secret Management 101 for ..."
+[3]: https://apidocs.teamwork.com/guides/teamwork/authentication?utm_source=chatgpt.com "Authentication - Teamwork.com API Documentation"
+[4]: https://apidocs.teamwork.com/docs/teamwork/v3/projects/get-projects-api-v3-projects-json "Returns a list of projects — API Reference V3 — Teamwork.com"
+[5]: https://www.smashingmagazine.com/2023/05/safest-way-hide-api-keys-react/?utm_source=chatgpt.com "The Safest Way To Hide Your API Keys When Using React"
+[6]: https://www.smashingmagazine.com/2021/12/protect-api-key-production-nextjs-api-route/?utm_source=chatgpt.com "How To Protect Your API Key In Production With Next.js API Route"
+[7]: https://apidocs.teamwork.com/docs/teamwork/v3/tasks/get-projects-api-v3-tasks-json?utm_source=chatgpt.com "Get all tasks. — API Reference V3 — Teamwork.com"
+[8]: https://apidocs.teamwork.com/docs/teamwork/endpoints-by-object/tasks/get-projects-api-v3-tasks-json?utm_source=chatgpt.com "Get all tasks. — API Reference by Object — Teamwork.com"
+[9]: https://apidocs.teamwork.com/docs/teamwork/v1/tasks/get-tasks-json?utm_source=chatgpt.com "Get all Tasks across all Projects - Teamwork.com API Documentation"
+[10]: https://apidocs.teamwork.com/guides/teamwork/youtube?utm_source=chatgpt.com "Quick Start Tutorial - Teamwork.com API Documentation"
