@@ -8,7 +8,7 @@ import { useAuthStore } from './store/authStore';
 
 // Pages (we'll create these)
 import LoginPage from './pages/LoginPage';
-import IssueListPage from './pages/IssueListPage';
+import TeamworkIssuesPage from './pages/TeamworkIssuesPage';
 import PromptWizardPage from './pages/PromptWizardPage';
 import TemplateManagerPage from './pages/TemplateManagerPage';
 import DashboardPage from './pages/DashboardPage';
@@ -73,7 +73,7 @@ function App() {
                 }
               >
                 <Route index element={<Navigate to="/issues" replace />} />
-                <Route path="issues" element={<IssueListPage />} />
+                <Route path="issues" element={<TeamworkIssuesPage />} />
                 <Route path="prompts/new" element={<PromptWizardPage />} />
                 <Route 
                   path="templates" 

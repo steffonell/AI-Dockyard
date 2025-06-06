@@ -2,9 +2,9 @@ import axios, { AxiosError, AxiosResponse } from 'axios';
 import { useAuthStore } from '../store/authStore';
 import { ApiError } from '../types';
 
-// Create axios instance
+// Create axios instance - pointing to Teamwork server instead of backend
 export const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -35,7 +35,7 @@ apiClient.interceptors.response.use(
       // Try to refresh token or redirect to login
       const authStore = useAuthStore.getState();
       try {
-        await authStore.refreshToken();
+        await authStore.refreshTokens();
         // Retry the original request
         if (error.config) {
           return apiClient.request(error.config);

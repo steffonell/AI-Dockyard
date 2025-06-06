@@ -22,7 +22,9 @@ const getTeamworkConfig = () => ({
   timeout: 10000 // 10 second timeout
 });
 
-const TEAMWORK_BASE_URL = `https://${process.env.TEAMWORK_SITE}`;
+const TEAMWORK_BASE_URL = process.env.TEAMWORK_SITE?.startsWith('http') 
+  ? process.env.TEAMWORK_SITE 
+  : `https://${process.env.TEAMWORK_SITE}`;
 
 /**
  * GET /api/teamwork/projects
