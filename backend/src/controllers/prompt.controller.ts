@@ -3,8 +3,14 @@ import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
 import { logger } from '../utils/logger';
 import { TemplateService } from '../services/template.service';
+import OpenAI from 'openai';
 
 const prisma = new PrismaClient();
+
+// Initialize OpenAI client
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
 
 // Extend Request type to include user
 interface AuthenticatedRequest extends Request {
@@ -37,6 +43,18 @@ const queryPromptsSchema = z.object({
   issueId: z.string().optional(),
   templateId: z.string().optional(),
   creatorId: z.string().optional()
+});
+
+// Validation schema for chat completion
+const chatCompletionSchema = z.object({
+  messages: z.array(z.object({
+    role: z.enum(['system', 'user', 'assistant', 'developer']),
+    content: z.string()
+  })),
+  model: z.string().default('gpt-4'),
+  temperature: z.number().min(0).max(2).optional(),
+  max_tokens: z.number().min(1).max(4096).optional(),
+  instructions: z.string().optional()
 });
 
 export class PromptController {
@@ -521,6 +539,77 @@ export class PromptController {
     } catch (error) {
       logger.error('Error recording generation event:', { error });
       res.status(500).json({ error: 'Failed to record generation event' });
+    }
+  }
+
+  // Chat completion endpoint
+  static async chatCompletion(req: AuthenticatedRequest, res: Response) {
+    try {
+      const data = chatCompletionSchema.parse(req.body);
+      const userId = req.user?.userId;
+
+      if (!userId) {
+        return res.status(401).json({ error: 'User authentication required' });
+      }
+
+      // Log the generation event
+      logger.info('Chat completion request:', {
+        userId,
+        model: data.model,
+        messageCount: data.messages.length
+      });
+
+      // Prepare the request parameters
+      const requestParams: any = {
+        model: data.model,
+        messages: data.messages.map(msg => ({
+          role: msg.role === 'developer' ? 'user' : msg.role, // Map developer to user for OpenAI API
+          content: msg.content
+        }))
+      };
+
+      // Add optional parameters only if they are defined
+      if (data.temperature !== undefined) {
+        requestParams.temperature = data.temperature;
+      }
+      if (data.max_tokens !== undefined) {
+        requestParams.max_tokens = data.max_tokens;
+      }
+
+      // Make request to OpenAI
+      const response = await openai.chat.completions.create(requestParams);
+
+      // Extract the response text
+      const responseText = response.choices[0]?.message?.content || '';
+
+      // Note: Generation events are designed for prompt-based generation
+      // For standalone chat completion, we just log the usage without database storage
+
+      res.json({
+        response: responseText,
+        usage: response.usage,
+        model: data.model
+      });
+
+    } catch (error) {
+      logger.error('Error in chat completion:', { error });
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          error: 'Invalid request data', 
+          details: error.errors 
+        });
+      }
+
+      if (error instanceof Error && error.message.includes('API key')) {
+        return res.status(500).json({ 
+          error: 'OpenAI API configuration error' 
+        });
+      }
+
+      res.status(500).json({ 
+        error: 'Failed to generate completion' 
+      });
     }
   }
 } 

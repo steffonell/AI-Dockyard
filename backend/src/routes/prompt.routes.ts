@@ -21,4 +21,7 @@ router.post('/:id/versions', PromptController.createVersion);
 // Analytics routes
 router.post('/:id/generation', PromptController.recordGeneration);
 
+// Chat completion route
+router.post('/chat-completion', PromptController.chatCompletion);
+
 export { router as promptRoutes }; 
