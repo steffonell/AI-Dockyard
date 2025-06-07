@@ -1,6 +1,11 @@
-import axios, { AxiosError, AxiosResponse } from 'axios';
+import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import { useAuthStore } from '../store/authStore';
 import { ApiError } from '../types';
+
+// Extend the axios request config to include retry flag
+interface ExtendedAxiosRequestConfig extends InternalAxiosRequestConfig {
+  _retry?: boolean;
+}
 
 // Create axios instance - now pointing to the integrated backend
 export const apiClient = axios.create({
@@ -18,30 +23,69 @@ apiClient.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    
+    // Log the request for debugging
+    console.log(`Making API request: ${config.method?.toUpperCase()} ${config.url}`, {
+      hasAuth: !!token,
+      baseURL: config.baseURL,
+    });
+    
     return config;
   },
   (error) => {
+    console.error('Request interceptor error:', error);
     return Promise.reject(error);
   }
 );
 
 // Response interceptor to handle auth errors
 apiClient.interceptors.response.use(
-  (response: AxiosResponse) => response,
+  (response: AxiosResponse) => {
+    // Log successful responses for debugging
+    console.log(`API response: ${response.status} ${response.config.method?.toUpperCase()} ${response.config.url}`);
+    return response;
+  },
   async (error: AxiosError) => {
+    console.error('API Error:', {
+      status: error.response?.status,
+      url: error.config?.url,
+      method: error.config?.method,
+      message: error.message,
+      data: error.response?.data,
+    });
+    
     const { response } = error;
+    const config = error.config as ExtendedAxiosRequestConfig;
     
     if (response?.status === 401) {
-      // Try to refresh token or redirect to login
       const authStore = useAuthStore.getState();
-      try {
-        await authStore.refreshTokens();
-        // Retry the original request
-        if (error.config) {
-          return apiClient.request(error.config);
+      
+      // Only try to refresh if we have a refresh token and haven't already tried
+      if (authStore.refreshToken && !config?._retry) {
+        try {
+          // Mark this request as having attempted a retry
+          if (config) {
+            config._retry = true;
+          }
+          
+          await authStore.refreshTokens();
+          
+          // Retry the original request with new token
+          if (config) {
+            const newToken = useAuthStore.getState().accessToken;
+            if (newToken) {
+              config.headers.Authorization = `Bearer ${newToken}`;
+              return apiClient.request(config);
+            }
+          }
+        } catch (refreshError) {
+          console.error('Token refresh failed:', refreshError);
+          // If refresh fails, logout and redirect
+          authStore.logout();
+          window.location.href = '/login';
         }
-      } catch (refreshError) {
-        // If refresh fails, logout and redirect
+      } else {
+        // No refresh token or already tried, logout
         authStore.logout();
         window.location.href = '/login';
       }

@@ -31,6 +31,7 @@ export interface TeamworkApiResponse<T> {
   timestamp: string;
   projectId?: string;
   filters?: any;
+  message?: string;
 }
 
 export class TeamworkService {
@@ -51,8 +52,9 @@ export class TeamworkService {
 
   static async getProjects(): Promise<TeamworkProject[]> {
     try {
-      const response = await apiClient.get<TeamworkApiResponse<{ projects: TeamworkProject[] }>>('/teamwork/projects');
-      return response.data.data.projects || [];
+      const response = await apiClient.get<TeamworkApiResponse<TeamworkProject[]>>('/teamwork/projects');
+      console.log('Projects API response:', response.data);
+      return response.data.data || [];
     } catch (error: any) {
       console.error('Failed to fetch Teamwork projects:', error);
       throw new Error(error.message || 'Failed to fetch projects');
@@ -80,8 +82,9 @@ export class TeamworkService {
       }
 
       const url = `/teamwork/tasks${params.toString() ? `?${params.toString()}` : ''}`;
-      const response = await apiClient.get<TeamworkApiResponse<{ tasks: TeamworkTask[] }>>(url);
-      return response.data.data.tasks || [];
+      const response = await apiClient.get<TeamworkApiResponse<TeamworkTask[]>>(url);
+      console.log('All tasks API response:', response.data);
+      return response.data.data || [];
     } catch (error: any) {
       console.error('Failed to fetch Teamwork tasks:', error);
       throw new Error(error.message || 'Failed to fetch tasks');
@@ -109,8 +112,9 @@ export class TeamworkService {
       }
 
       const url = `/teamwork/projects/${projectId}/tasks${params.toString() ? `?${params.toString()}` : ''}`;
-      const response = await apiClient.get<TeamworkApiResponse<{ tasks: TeamworkTask[] }>>(url);
-      return response.data.data.tasks || [];
+      const response = await apiClient.get<TeamworkApiResponse<TeamworkTask[]>>(url);
+      console.log('Project tasks API response:', response.data);
+      return response.data.data || [];
     } catch (error: any) {
       console.error(`Failed to fetch tasks for project ${projectId}:`, error);
       throw new Error(error.message || 'Failed to fetch project tasks');

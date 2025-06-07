@@ -9,11 +9,13 @@ interface AuthStore {
   refreshToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isInitialized: boolean;
   login: (credentials: LoginCredentials) => Promise<void>;
   logout: () => void;
   refreshTokens: () => Promise<void>;
   setUser: (user: User | null) => void;
   setTokens: (tokens: AuthTokens) => void;
+  initialize: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthStore>()(
@@ -24,6 +26,7 @@ export const useAuthStore = create<AuthStore>()(
       refreshToken: null,
       isAuthenticated: false,
       isLoading: false,
+      isInitialized: false,
 
       login: async (credentials: LoginCredentials) => {
         try {
@@ -82,6 +85,30 @@ export const useAuthStore = create<AuthStore>()(
         }
       },
 
+      initialize: async () => {
+        try {
+          set({ isLoading: true });
+          
+          const state = get();
+          
+          // If we have a user and refresh token but no access token, try to refresh
+          if (state.user && state.refreshToken && !state.accessToken) {
+            await get().refreshTokens();
+          }
+          
+          // If we have a user and access token, consider authenticated
+          if (state.user && state.accessToken) {
+            set({ isAuthenticated: true });
+          }
+          
+          set({ isInitialized: true, isLoading: false });
+        } catch (error) {
+          console.error('Failed to initialize auth:', error);
+          set({ isInitialized: true, isLoading: false });
+          // Don't throw here, let the app continue
+        }
+      },
+
       setUser: (user: User | null) => {
         set({ user });
       },
@@ -99,7 +126,7 @@ export const useAuthStore = create<AuthStore>()(
       partialize: (state) => ({
         user: state.user,
         refreshToken: state.refreshToken,
-        // Don't persist accessToken for security
+        // Don't persist accessToken for security, but store enough info to refresh
       }),
     }
   )

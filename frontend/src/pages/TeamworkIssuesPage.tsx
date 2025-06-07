@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -29,6 +29,8 @@ import {
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import { TeamworkService, TeamworkTask, TeamworkProject } from '../services/teamworkService';
+import { useAuthStore } from '../store/authStore';
+import AuthDebug from '../components/common/AuthDebug';
 
 const statusColors: Record<string, string> = {
   new: '#1976d2',
@@ -54,15 +56,30 @@ const TeamworkIssuesPage: React.FC = () => {
     completedOnly: false,
   });
   const [connectionTestOpen, setConnectionTestOpen] = useState(false);
+  const { isAuthenticated, accessToken, user } = useAuthStore();
+
+  // Debug authentication state
+  useEffect(() => {
+    console.log('TeamworkIssuesPage - Auth state:', {
+      isAuthenticated,
+      hasAccessToken: !!accessToken,
+      hasUser: !!user,
+      userId: user?.id,
+    });
+  }, [isAuthenticated, accessToken, user]);
 
   // Test connection query
   const {
     data: connectionTest,
     isLoading: isTestingConnection,
     refetch: testConnection,
+    error: connectionTestError,
   } = useQuery({
     queryKey: ['teamwork-connection-test'],
-    queryFn: () => TeamworkService.testConnection(),
+    queryFn: () => {
+      console.log('Executing test connection query');
+      return TeamworkService.testConnection();
+    },
     enabled: false, // Only run when manually triggered
   });
 
@@ -71,9 +88,14 @@ const TeamworkIssuesPage: React.FC = () => {
     data: projects = [],
     isLoading: isLoadingProjects,
     error: projectsError,
+    refetch: refetchProjects,
   } = useQuery({
     queryKey: ['teamwork-projects'],
-    queryFn: () => TeamworkService.getProjects(),
+    queryFn: () => {
+      console.log('Executing projects query');
+      return TeamworkService.getProjects();
+    },
+    enabled: isAuthenticated && !!accessToken,
     retry: 1,
   });
 
@@ -86,6 +108,8 @@ const TeamworkIssuesPage: React.FC = () => {
   } = useQuery({
     queryKey: ['teamwork-tasks', filters],
     queryFn: () => {
+      console.log('Executing tasks query with filters:', filters);
+      
       const apiFilters = {
         completedOnly: filters.completedOnly,
         status: filters.status ? [filters.status] : undefined,
@@ -97,8 +121,21 @@ const TeamworkIssuesPage: React.FC = () => {
         return TeamworkService.getAllTasks(apiFilters);
       }
     },
+    enabled: isAuthenticated && !!accessToken,
     retry: 1,
   });
+
+  // Debug query states
+  useEffect(() => {
+    console.log('Query states:', {
+      isLoadingProjects,
+      isLoadingTasks,
+      projectsError: (projectsError as any)?.message,
+      tasksError: (tasksError as any)?.message,
+      projectsCount: projects.length,
+      tasksCount: tasks.length,
+    });
+  }, [isLoadingProjects, isLoadingTasks, projectsError, tasksError, projects, tasks]);
 
   // Filter tasks by search term (client-side filtering)
   const filteredTasks = tasks.filter((task: TeamworkTask) => {
@@ -160,6 +197,32 @@ const TeamworkIssuesPage: React.FC = () => {
   const hasError = projectsError || tasksError;
   const isLoading = isLoadingProjects || isLoadingTasks;
 
+  // If not authenticated, show auth message
+  if (!isAuthenticated || !accessToken) {
+    return (
+      <Box>
+        <Typography variant="h4" component="h1" gutterBottom>
+          Teamwork Issues
+        </Typography>
+        <Alert severity="warning" sx={{ mt: 2 }}>
+          <strong>Authentication Required</strong>
+          <br />
+          Please ensure you are logged in to access Teamwork issues.
+          <br />
+          Debug info: isAuthenticated={isAuthenticated ? 'true' : 'false'}, hasToken={!!accessToken ? 'true' : 'false'}
+        </Alert>
+        <Box sx={{ mt: 2 }}>
+          <Button
+            variant="contained"
+            onClick={() => window.location.href = '/login'}
+          >
+            Go to Login
+          </Button>
+        </Box>
+      </Box>
+    );
+  }
+
   if (hasError) {
     const isRateLimit = (projectsError as any)?.code === 'RATE_LIMIT_EXCEEDED' || 
                        (tasksError as any)?.code === 'RATE_LIMIT_EXCEEDED';
@@ -195,6 +258,8 @@ const TeamworkIssuesPage: React.FC = () => {
               <br />
               <br />
               Error: {(projectsError as any)?.message || (tasksError as any)?.message || 'Unknown error'}
+              <br />
+              Debug: {JSON.stringify({ projectsError, tasksError }, null, 2)}
             </>
           )}
         </Alert>
@@ -204,7 +269,7 @@ const TeamworkIssuesPage: React.FC = () => {
             startIcon={<RefreshIcon />}
             onClick={() => {
               refetchTasks();
-              window.location.reload();
+              refetchProjects();
             }}
             disabled={isRateLimit}
           >
@@ -224,6 +289,7 @@ const TeamworkIssuesPage: React.FC = () => {
 
   return (
     <Box>
+      <AuthDebug />
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4" component="h1">
           Teamwork Issues

@@ -1,6 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
-import { CssBaseline } from '@mui/material';
+import { CssBaseline, Box, CircularProgress } from '@mui/material';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { lightTheme } from './theme';
@@ -51,18 +51,29 @@ const queryClient = new QueryClient({
 });
 
 function App() {
-  const { isAuthenticated, user, refreshToken: refreshTokenValue, refreshTokens } = useAuthStore();
+  const { isAuthenticated, isInitialized, isLoading, initialize } = useAuthStore();
 
-  // Auth initialization logic directly in App component
+  // Initialize auth on app startup
   useEffect(() => {
-    // If we have a user and refresh token but no access token, try to refresh
-    if (user && refreshTokenValue && !useAuthStore.getState().accessToken) {
-      refreshTokens().catch(() => {
-        // If refresh fails, user will be logged out automatically
-        console.log('Failed to refresh token on app init');
-      });
-    }
-  }, [user, refreshTokenValue, refreshTokens]);
+    initialize();
+  }, [initialize]);
+
+  // Show loading spinner while initializing
+  if (!isInitialized || isLoading) {
+    return (
+      <ThemeProvider theme={lightTheme}>
+        <CssBaseline />
+        <Box
+          display="flex"
+          justifyContent="center"
+          alignItems="center"
+          minHeight="100vh"
+        >
+          <CircularProgress />
+        </Box>
+      </ThemeProvider>
+    );
+  }
 
   return (
     <ErrorBoundary>
