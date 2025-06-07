@@ -10,20 +10,50 @@ export interface TeamworkProject {
 }
 
 export interface TeamworkTask {
-  id: string;
-  name: string;
-  title?: string;
-  summary?: string;
-  description?: string;
+  id: number;
+  key: number;
+  title: string;
   status: string;
-  projectId: string;
-  projectName: string;
+  createdAt: string;
+  updatedAt: string;
+  description?: string;
+  priority?: string;
+  labels: string[];
+  url: string;
+  assignee?: {
+    id: string;
+    name: string;
+    displayName: string;
+    email: string;
+  } | null;
+  reporter?: {
+    name: string;
+    displayName?: string;
+    email?: string;
+  };
+  rawData?: {
+    id: number;
+    key: number;
+    title: string;
+    summary: string;
+    description: string;
+    status: string;
+    assignee: any;
+    reporter: any;
+    priority: string;
+    url: string;
+    self: string;
+    labels: string[];
+    tags: string[];
+  };
+  // Legacy fields for backward compatibility
+  name?: string;
+  summary?: string;
+  projectId?: string;
+  projectName?: string;
   assigneeId?: string;
   assigneeName?: string;
   assigneeEmail?: string;
-  createdAt: string;
-  updatedAt: string;
-  priority?: string;
   tags?: string[];
 }
 
@@ -84,6 +114,9 @@ export class TeamworkService {
       }
 
       const url = `/teamwork/tasks${params.toString() ? `?${params.toString()}` : ''}`;
+      console.log('getAllTasks - URL being called:', url);
+      console.log('getAllTasks - Filters received:', filters);
+      
       const response = await apiClient.get<TeamworkApiResponse<TeamworkTask[]>>(url);
       console.log('All tasks API response:', response.data);
       return response.data.data || [];
@@ -114,6 +147,10 @@ export class TeamworkService {
       }
 
       const url = `/teamwork/projects/${projectId}/tasks${params.toString() ? `?${params.toString()}` : ''}`;
+      console.log('getProjectTasks - URL being called:', url);
+      console.log('getProjectTasks - Filters received:', filters);
+      console.log('getProjectTasks - Project ID:', projectId);
+      
       const response = await apiClient.get<TeamworkApiResponse<TeamworkTask[]>>(url);
       console.log('Project tasks API response:', response.data);
       return response.data.data || [];
