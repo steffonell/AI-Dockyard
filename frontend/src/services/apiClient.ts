@@ -1,6 +1,7 @@
 import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import { useAuthStore } from '../store/authStore';
 import { ApiError } from '../types';
+import { tokenRefreshManager } from './tokenRefreshManager';
 
 // Extend the axios request config to include retry flag
 interface ExtendedAxiosRequestConfig extends InternalAxiosRequestConfig {
@@ -68,7 +69,15 @@ apiClient.interceptors.response.use(
             config._retry = true;
           }
           
-          await authStore.refreshTokens();
+          // Check if refresh is already in progress
+          if (tokenRefreshManager.isCurrentlyRefreshing()) {
+            console.log('Token refresh in progress, queuing request...');
+            // Queue this request to be retried after refresh completes
+            return tokenRefreshManager.queueRequest(config);
+          }
+          
+          // Start token refresh using our singleton manager
+          await tokenRefreshManager.refreshToken();
           
           // Retry the original request with new token
           if (config) {

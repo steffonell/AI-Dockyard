@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { User, LoginCredentials, AuthTokens } from '../types';
 import apiClient from '../services/apiClient';
+import { tokenRefreshManager } from '../services/tokenRefreshManager';
+import { authMonitor } from '../services/authMonitor';
+import { getPreemptiveRefreshService } from '../services/preemptiveRefresh';
 
 interface AuthStore {
   user: User | null;
@@ -42,6 +45,9 @@ export const useAuthStore = create<AuthStore>()(
             isAuthenticated: true,
             isLoading: false,
           });
+          
+          // Start preemptive refresh after successful login
+          getPreemptiveRefreshService().enable();
         } catch (error) {
           set({ isLoading: false });
           throw error;
@@ -49,6 +55,8 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       logout: () => {
+        authMonitor.trackLogout('User initiated logout');
+        
         set({
           user: null,
           accessToken: null,
@@ -58,26 +66,14 @@ export const useAuthStore = create<AuthStore>()(
         
         // Clear any stored data
         localStorage.removeItem('auth-storage');
+        tokenRefreshManager.clearQueue();
+        getPreemptiveRefreshService().disable();
       },
 
       refreshTokens: async () => {
         try {
-          const currentRefreshToken = get().refreshToken;
-          if (!currentRefreshToken) {
-            throw new Error('No refresh token available');
-          }
-
-          const response = await apiClient.post('/auth/refresh', {
-            refreshToken: currentRefreshToken
-          });
-          const { data } = response;
-          
-          set({
-            user: data.user,
-            accessToken: data.tokens.accessToken,
-            refreshToken: data.tokens.refreshToken,
-            isAuthenticated: true,
-          });
+          // Use the centralized token refresh manager
+          await tokenRefreshManager.refreshToken();
         } catch (error) {
           // If refresh fails, logout
           get().logout();
@@ -119,6 +115,9 @@ export const useAuthStore = create<AuthStore>()(
           refreshToken: tokens.refreshToken,
           isAuthenticated: true,
         });
+        
+        // Reschedule preemptive refresh with new token
+        getPreemptiveRefreshService().enable();
       },
     }),
     {
