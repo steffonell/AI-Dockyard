@@ -30,7 +30,6 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { TeamworkService, TeamworkTask, TeamworkProject } from '../services/teamworkService';
 import { useAuthStore } from '../store/authStore';
-import AuthDebug from '../components/common/AuthDebug';
 
 const statusColors: Record<string, string> = {
   new: '#1976d2',
@@ -135,14 +134,21 @@ const TeamworkIssuesPage: React.FC = () => {
       projectsCount: projects.length,
       tasksCount: tasks.length,
     });
+    
+    // Debug task data structure
+    if (tasks.length > 0) {
+      console.log('First task data:', tasks[0]);
+      console.log('All tasks data:', tasks);
+    }
   }, [isLoadingProjects, isLoadingTasks, projectsError, tasksError, projects, tasks]);
 
   // Filter tasks by search term (client-side filtering)
   const filteredTasks = tasks.filter((task: TeamworkTask) => {
     if (!filters.search) return true;
     const searchLower = filters.search.toLowerCase();
+    const taskTitle = task.title || task.name || task.summary || '';
     return (
-      task.name.toLowerCase().includes(searchLower) ||
+      taskTitle.toLowerCase().includes(searchLower) ||
       task.description?.toLowerCase().includes(searchLower) ||
       task.projectName.toLowerCase().includes(searchLower)
     );
@@ -289,7 +295,6 @@ const TeamworkIssuesPage: React.FC = () => {
 
   return (
     <Box>
-      <AuthDebug />
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4" component="h1">
           Teamwork Issues
@@ -374,9 +379,14 @@ const TeamworkIssuesPage: React.FC = () => {
               </FormControl>
             </Grid>
             <Grid item xs={12} md={3}>
-              <Typography variant="body2" color="text.secondary">
-                {filteredTasks.length} tasks found
-              </Typography>
+              <Box display="flex" alignItems="center" gap={1}>
+                <Typography variant="body1" fontWeight={600} color="primary.main">
+                  {filteredTasks.length}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {filteredTasks.length === 1 ? 'task found' : 'tasks found'}
+                </Typography>
+              </Box>
             </Grid>
           </Grid>
         </CardContent>
@@ -389,34 +399,71 @@ const TeamworkIssuesPage: React.FC = () => {
         </Box>
       ) : !filteredTasks.length ? (
         <Card>
-          <CardContent>
-            <Typography variant="body1" textAlign="center" py={4}>
-              {filters.search || filters.status || filters.projectId
-                ? 'No tasks found matching your filters.' 
-                : 'No tasks found. Check your Teamwork connection and ensure you have tasks in your projects.'}
+          <CardContent sx={{ textAlign: 'center', py: 6 }}>
+            <Typography variant="h6" color="text.secondary" gutterBottom>
+              📋 No Tasks Found
             </Typography>
+            <Typography variant="body1" color="text.secondary" mb={2}>
+              {filters.search || filters.status || filters.projectId
+                ? 'No tasks match your current filters. Try adjusting your search criteria.' 
+                : 'No tasks found in your Teamwork projects. Make sure you have tasks created in Teamwork.'}
+            </Typography>
+            {(filters.search || filters.status || filters.projectId) && (
+              <Button
+                variant="outlined"
+                onClick={() => setFilters({
+                  search: '',
+                  status: '',
+                  projectId: '',
+                  completedOnly: false,
+                })}
+                sx={{ mt: 1 }}
+              >
+                Clear All Filters
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : (
         <Box>
           {filteredTasks.map((task: TeamworkTask) => (
-            <Card key={task.id} sx={{ mb: 2, cursor: 'pointer' }}>
-              <CardContent>
+            <Card key={task.id} sx={{ mb: 2, cursor: 'pointer', '&:hover': { boxShadow: 4 } }}>
+              <CardContent sx={{ p: 3 }}>
                 <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
-                  <Box flex={1}>
-                    <Typography variant="h6" component="h3" gutterBottom>
-                      {task.name}
-                    </Typography>
+                  <Box flex={1} mr={2}>
+                    <Box display="flex" alignItems="center" gap={1} mb={1}>
+                      <Typography variant="h6" component="h3" fontWeight={600}>
+                        {task.title || task.name || task.summary || `Task #${task.id}`}
+                      </Typography>
+                      {task.priority && (
+                        <Chip
+                          label={task.priority.toUpperCase()}
+                          size="small"
+                          color={
+                            task.priority === 'high' ? 'error' : 
+                            task.priority === 'medium' ? 'warning' : 
+                            'default'
+                          }
+                          sx={{ 
+                            fontWeight: 'bold',
+                            fontSize: '0.7rem'
+                          }}
+                        />
+                      )}
+                    </Box>
+                    
                     {task.description && (
                       <Typography 
                         variant="body2" 
                         color="text.secondary" 
                         sx={{ 
+                          mb: 2,
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           display: '-webkit-box',
-                          WebkitLineClamp: 2,
+                          WebkitLineClamp: 3,
                           WebkitBoxOrient: 'vertical',
+                          lineHeight: 1.4
                         }}
                       >
                         {task.description}
@@ -424,41 +471,81 @@ const TeamworkIssuesPage: React.FC = () => {
                     )}
                   </Box>
                   
-                  <Box>
+                  <Box display="flex" flexDirection="column" alignItems="flex-end" gap={1}>
                     <Chip
                       label={getStatusLabel(task.status)}
                       size="small"
                       sx={{
                         backgroundColor: getStatusColor(task.status),
                         color: 'white',
+                        fontWeight: 'bold'
                       }}
                     />
+                    <Typography variant="caption" color="text.secondary">
+                      #{task.id}
+                    </Typography>
                   </Box>
                 </Box>
                 
-                <Box display="flex" justifyContent="space-between" alignItems="center">
-                  <Box display="flex" gap={2} alignItems="center">
+                <Box 
+                  display="flex" 
+                  justifyContent="space-between" 
+                  alignItems="center"
+                  pt={2}
+                  borderTop="1px solid"
+                  borderColor="divider"
+                >
+                  <Box display="flex" gap={2} alignItems="center" flexWrap="wrap">
                     <Chip
                       label={task.projectName}
                       size="small"
                       variant="outlined"
+                      sx={{ 
+                        backgroundColor: 'primary.50',
+                        borderColor: 'primary.200',
+                        color: 'primary.700',
+                        fontWeight: 500
+                      }}
                     />
                     {task.assigneeName && (
-                      <Typography variant="body2" color="text.secondary">
-                        Assigned to: {task.assigneeName}
-                      </Typography>
+                      <Box display="flex" alignItems="center" gap={0.5}>
+                        <Typography variant="body2" color="text.secondary" fontSize="0.875rem">
+                          👤 {task.assigneeName}
+                        </Typography>
+                      </Box>
                     )}
-                    {task.priority && (
-                      <Chip
-                        label={task.priority}
-                        size="small"
-                        color={task.priority === 'high' ? 'error' : 'default'}
-                      />
+                    {task.tags && task.tags.length > 0 && (
+                      <Box display="flex" gap={0.5} flexWrap="wrap">
+                        {task.tags.slice(0, 3).map((tag, index) => (
+                          <Chip
+                            key={index}
+                            label={tag}
+                            size="small"
+                            variant="outlined"
+                            sx={{ 
+                              fontSize: '0.7rem',
+                              height: '20px',
+                              color: 'text.secondary'
+                            }}
+                          />
+                        ))}
+                        {task.tags.length > 3 && (
+                          <Typography variant="caption" color="text.secondary">
+                            +{task.tags.length - 3} more
+                          </Typography>
+                        )}
+                      </Box>
                     )}
                   </Box>
-                  <Typography variant="body2" color="text.secondary">
-                    Updated: {formatDate(task.updatedAt)}
-                  </Typography>
+                  
+                  <Box display="flex" flexDirection="column" alignItems="flex-end">
+                    <Typography variant="caption" color="text.secondary" fontSize="0.75rem">
+                      Updated: {formatDate(task.updatedAt)}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" fontSize="0.75rem">
+                      Created: {formatDate(task.createdAt)}
+                    </Typography>
+                  </Box>
                 </Box>
               </CardContent>
             </Card>

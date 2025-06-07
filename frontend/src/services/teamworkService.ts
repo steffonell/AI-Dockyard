@@ -12,6 +12,8 @@ export interface TeamworkProject {
 export interface TeamworkTask {
   id: string;
   name: string;
+  title?: string;
+  summary?: string;
   description?: string;
   status: string;
   projectId: string;
