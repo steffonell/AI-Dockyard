@@ -1,6 +1,6 @@
-# Teamwork API Integration
+# AI-Powered Issue-to-Prompt System
 
-A secure, full-stack application for integrating with Teamwork's API. Features a React frontend with Express backend proxy to keep API credentials secure.
+A complete workflow system that transforms Teamwork issues into actionable AI instructions for developers. Features template management, issue selection, and AI-powered prompt generation to streamline development workflows with tools like Cursor.
 
 ## 🔒 Security Features
 
@@ -10,14 +10,17 @@ A secure, full-stack application for integrating with Teamwork's API. Features a
 - **CORS protection** - Restricted origins for API access
 - **Request/response logging** - Comprehensive error tracking
 - **Input validation** - Sanitized API parameters
+- **Role-based access control** - Admin-only template management
+- **OpenAI API integration** - Secure AI prompt generation
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
 - Node.js 16+ and npm
-- MySQL 8+ (optional, for caching)
+- MySQL 8+ (for data persistence)
 - Teamwork account with API access
+- OpenAI API key (for AI prompt generation)
 
 ### 1. Clone and Setup
 
@@ -86,24 +89,132 @@ npm start
 - **Backend API:** http://localhost:5000
 - **Health Check:** http://localhost:5000/health
 
+## 🤖 Issue-to-Prompt Workflow
+
+The core feature that transforms Teamwork issues into actionable AI instructions for developers using tools like Cursor.
+
+### How It Works
+
+1. **Template Management** (Admin) - Create reusable prompt templates with variables
+2. **Issue Selection** - Choose any Teamwork issue/ticket
+3. **AI Configuration** - Set model parameters (GPT-4, temperature, etc.)
+4. **Instruction Generation** - AI creates specific, actionable development instructions
+
+### Key Features
+
+- **Variable Substitution** - Templates automatically populate with issue data
+- **Multiple AI Models** - Support for GPT-4, GPT-4o, GPT-3.5-turbo
+- **Template Categories** - Bug fixes, features, code review, testing, documentation
+- **Copy & Download** - Easy sharing with AI coding assistants
+- **Preview Mode** - See populated templates before generation
+
+### Available Template Variables
+
+Templates can use these variables that auto-populate with issue data:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `{issue_title}` | Issue title | "Fix login validation bug" |
+| `{issue_key}` | Issue identifier | "PROJ-123" |
+| `{issue_description}` | Full description | "Users cannot login with valid credentials" |
+| `{issue_status}` | Current status | "new", "in-progress", "completed" |
+| `{issue_priority}` | Priority level | "high", "medium", "low" |
+| `{project_name}` | Project name | "E-commerce Platform" |
+| `{assignee_name}` | Assigned developer | "John Smith" |
+| `{reporter_name}` | Issue reporter | "Jane Doe" |
+| `{created_date}` | Creation date | "2024-01-15" |
+| `{updated_date}` | Last update | "2024-01-20" |
+| `{issue_url}` | Direct Teamwork link | Full URL to issue |
+
+### Example Workflow
+
+1. **Admin creates bug fix template:**
+```markdown
+# Fix: {issue_title}
+
+Analyze and fix this {issue_priority} priority bug in {project_name}.
+
+## Issue Details
+- Key: {issue_key}
+- Description: {issue_description}
+- Assignee: {assignee_name}
+
+## Instructions
+1. Reproduce the issue locally
+2. Identify root cause
+3. Implement fix with tests
+4. Update documentation if needed
+
+Issue URL: {issue_url}
+```
+
+2. **Developer selects issue** from Teamwork
+3. **System generates AI instructions:**
+```markdown
+# Fix: Login validation failing for valid users
+
+Analyze and fix this high priority bug in E-commerce Platform.
+
+## Issue Details  
+- Key: PROJ-123
+- Description: Users cannot login with valid email/password combinations
+- Assignee: John Smith
+
+## Instructions
+1. Check authentication middleware
+2. Verify database connection
+3. Test password hashing logic
+4. Add comprehensive test coverage
+
+Issue URL: https://company.teamwork.com/issues/123
+```
+
+4. **Developer copies instructions** to Cursor or other AI IDE
+5. **AI assistant provides specific implementation guidance**
+
+### Navigation
+
+- **Issues Page** → "Create AI Instructions" button → Issue-to-Prompt workflow
+- **Template Manager** → "Use Templates" button → Issue-to-Prompt workflow  
+- **Direct navigation** → `/issue-to-prompt` in the app
+
+### Example Templates
+
+See [Example Templates Documentation](docs/EXAMPLE_TEMPLATES.md) for ready-to-use templates for:
+- Bug fixes
+- Feature development  
+- Code reviews
+- Testing strategies
+- Documentation tasks
+
 ## 📁 Project Structure
 
 ```
-teamwork-integration/
-├── server/                 # Express backend
-│   ├── api/
-│   │   └── teamwork.js    # Teamwork API routes
-│   ├── database/
-│   │   └── mysql.js       # MySQL caching layer
-│   └── server.js          # Main server file
-├── client/                # React frontend
+AI-Dockyard/
+├── backend/               # Express backend
 │   ├── src/
-│   │   ├── components/    # React components
-│   │   ├── services/      # API service layer
-│   │   ├── App.jsx        # Main app component
-│   │   └── index.js       # Entry point
+│   │   ├── controllers/   # Route controllers
+│   │   ├── services/      # Business logic
+│   │   ├── routes/        # API routes
+│   │   ├── middleware/    # Auth, validation, etc.
+│   │   └── types/         # TypeScript definitions
+│   ├── prisma/           # Database schema & migrations
+│   └── .env              # Environment variables
+├── frontend/             # React frontend
+│   ├── src/
+│   │   ├── components/   # Reusable UI components
+│   │   ├── pages/        # Main application pages
+│   │   │   ├── IssueToPromptPage.tsx    # Main workflow
+│   │   │   ├── TemplateManagerPage.tsx  # Template CRUD
+│   │   │   ├── TeamworkIssuesPage.tsx   # Issue browser
+│   │   │   └── PromptWizardPage.tsx     # Prompt generator
+│   │   ├── services/     # API service layer
+│   │   ├── store/        # State management
+│   │   └── types/        # TypeScript definitions
 │   └── public/
-└── .env                   # Environment variables
+├── docs/                 # Documentation
+│   └── EXAMPLE_TEMPLATES.md  # Template examples
+└── README.md
 ```## 🔌 API Endpoints
 
 ### Backend Routes (Express Proxy)

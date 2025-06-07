@@ -11,6 +11,7 @@ import LoginPage from './pages/LoginPage';
 import TeamworkIssuesPage from './pages/TeamworkIssuesPage';
 import PromptWizardPage from './pages/PromptWizardPage';
 import TemplateManagerPage from './pages/TemplateManagerPage';
+import IssueToPromptPage from './pages/IssueToPromptPage';
 import DashboardPage from './pages/DashboardPage';
 
 // Components
@@ -104,6 +105,7 @@ function App() {
                 <Route index element={<Navigate to="/issues" replace />} />
                 <Route path="issues" element={<TeamworkIssuesPage />} />
                 <Route path="prompts/new" element={<PromptWizardPage />} />
+                <Route path="issue-to-prompt" element={<IssueToPromptPage />} />
                 <Route 
                   path="templates" 
                   element={

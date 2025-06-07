@@ -25,6 +25,7 @@ import {
   Settings,
   Logout,
   AccountCircle,
+  AutoAwesome,
 } from '@mui/icons-material';
 import { useAuthStore } from '../../store/authStore';
 
@@ -42,6 +43,11 @@ const navigationItems: NavigationItem[] = [
     path: '/issues',
     label: 'Issues',
     icon: <Assignment />,
+  },
+  {
+    path: '/issue-to-prompt',
+    label: 'Issue-to-Prompt',
+    icon: <AutoAwesome />,
   },
   {
     path: '/prompts/new',

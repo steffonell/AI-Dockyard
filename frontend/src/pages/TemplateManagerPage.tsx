@@ -40,8 +40,10 @@ import {
   Edit as EditIcon,
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
+  AutoAwesome as AutoAwesomeIcon,
 } from '@mui/icons-material';
 import ReactMarkdown from 'react-markdown';
+import { useNavigate } from 'react-router-dom';
 import { PromptTemplate, ValidationRule, ApiResponse, NotificationState } from '../types';
 import TemplateService, { CreateTemplateData, UpdateTemplateData } from '../services/templateService';
 import CompanyService, { Company } from '../services/companyService';
@@ -124,6 +126,7 @@ const TabPanel: React.FC<TabPanelProps> = ({ children, value, index, ...other })
 const TemplateManagerPage: React.FC = () => {
   // Get user context from auth store
   const { isAuthenticated } = useAuthStore();
+  const navigate = useNavigate();
   
   // State management for form data and UI
   const [activeTab, setActiveTab] = useState(0);
@@ -414,13 +417,23 @@ const TemplateManagerPage: React.FC = () => {
   return (
     <Box sx={{ flexGrow: 1, p: 3 }}>
       {/* Page Header */}
-      <Typography variant="h4" component="h1" gutterBottom>
-        Template Manager
-      </Typography>
-      
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-        Create, manage, and organize prompt templates with markdown support
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Box>
+          <Typography variant="h4" component="h1" gutterBottom>
+            Template Manager
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            Create, manage, and organize prompt templates with markdown support
+          </Typography>
+        </Box>
+        <Button
+          variant="contained"
+          startIcon={<AutoAwesomeIcon />}
+          onClick={() => navigate('/issue-to-prompt')}
+        >
+          Use Templates
+        </Button>
+      </Box>
 
       {/* Main Content */}
       <Paper sx={{ width: '100%' }}>

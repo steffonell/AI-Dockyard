@@ -26,8 +26,10 @@ import {
   Refresh as RefreshIcon,
   CheckCircle as CheckCircleIcon,
   Settings as SettingsIcon,
+  AutoAwesome as AutoAwesomeIcon,
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { TeamworkService, TeamworkTask, TeamworkProject } from '../services/teamworkService';
 import { useAuthStore } from '../store/authStore';
 
@@ -60,6 +62,7 @@ const statusLabels: Record<string, string> = {
 };
 
 const TeamworkIssuesPage: React.FC = () => {
+  const navigate = useNavigate();
   const [filters, setFilters] = useState({
     search: '',
     status: '',
@@ -338,6 +341,14 @@ const TeamworkIssuesPage: React.FC = () => {
           Teamwork Issues
         </Typography>
         <Box display="flex" gap={2}>
+          <Button
+            variant="contained"
+            startIcon={<AutoAwesomeIcon />}
+            onClick={() => navigate('/issue-to-prompt')}
+            sx={{ mr: 2 }}
+          >
+            Create AI Instructions
+          </Button>
           <Tooltip title="Test Teamwork connection">
             <IconButton 
               onClick={() => setConnectionTestOpen(true)}
