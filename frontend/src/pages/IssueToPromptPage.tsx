@@ -267,7 +267,7 @@ ${issue.description || 'No description provided'}
     return (
       <Box sx={{ p: 3, textAlign: 'center' }}>
         <Typography variant="h6" color="text.secondary">
-          Please log in to access the Issue-to-Prompt workflow
+          Please log in to access the AI Dockyard workflow
         </Typography>
       </Box>
     );
@@ -278,7 +278,7 @@ ${issue.description || 'No description provided'}
       {/* Header */}
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" component="h1" gutterBottom>
-          Issue-to-Prompt Workflow
+          AI Instructions Workflow
         </Typography>
         <Typography variant="body1" color="text.secondary">
           Transform Teamwork issues into actionable AI instructions using custom templates

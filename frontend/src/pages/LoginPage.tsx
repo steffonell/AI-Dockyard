@@ -58,7 +58,7 @@ const LoginPage: React.FC = () => {
               Welcome Back
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Sign in to Issue-to-Prompt Platform
+              Sign in to AI Dockyard Platform
             </Typography>
           </Box>
 

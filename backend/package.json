@@ -1,7 +1,7 @@
 {
-  "name": "issue-to-prompt-platform",
+  "name": "ai-dockyard-platform",
   "version": "0.1.0",
-  "description": "Issue-to-Prompt Generation Platform MVP",
+  "description": "AI Dockyard - Intelligent Development Platform",
   "main": "dist/index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",

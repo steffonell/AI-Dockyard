@@ -1,7 +1,7 @@
 {
   "name": "ai-dockyard",
   "version": "0.1.0",
-  "description": "AI-Dockyard - Issue-to-Prompt Generation Platform",
+  "description": "AI Dockyard - Intelligent Development Platform",
   "scripts": {
     "dev": "npm run dev:backend & npm run dev:frontend",
     "dev:backend": "cd backend && npm run dev",

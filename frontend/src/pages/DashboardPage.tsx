@@ -132,7 +132,7 @@ const DashboardPage: React.FC = () => {
   // Quick actions based on user role
   const quickActions: QuickAction[] = [
     {
-      title: 'Issue-to-Prompt',
+      title: 'AI Instructions',
       description: 'Transform issues into AI instructions',
       icon: <AutoAwesomeIcon />,
       color: '#667eea',
@@ -228,7 +228,7 @@ const DashboardPage: React.FC = () => {
           </Tooltip>
         </Box>
         <Typography variant="body1" color="text.secondary">
-          Here's your Issue-to-Prompt dashboard overview
+          Here's your AI Dockyard dashboard overview
         </Typography>
       </Box>
 
